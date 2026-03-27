@@ -1,0 +1,10 @@
+{
+  "name": "Fichajes",
+  "short_name": "Fichajes",
+  "description": "Control de presencia",
+  "start_url": "/fichajes/",
+  "display": "standalone",
+  "background_color": "#0d0d1a",
+  "theme_color": "#0d0d1a",
+  "icons": []
+}

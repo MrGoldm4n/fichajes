@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+  <title>Fichajes</title>
+  <link rel="manifest" href="manifest.json"/>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+<div id="splash" class="screen active">
+  <div class="splash-inner">
+    <div class="logo-icon">⏱</div>
+    <h1 class="logo-title">Fichajes</h1>
+    <div class="loader-bar"><div class="loader-fill"></div></div>
+  </div>
+</div>
+
+<div id="screen-noauth" class="screen">
+  <div class="noauth-inner">
+    <div class="noauth-icon">🔒</div>
+    <h2>Acceso no autorizado</h2>
+    <p>Tu cuenta de Telegram no está registrada.</p>
+    <p>Contacta con el administrador.</p>
+    <div class="tg-id-box" id="tg-id-box"></div>
+  </div>
+</div>
+
+<div id="screen-fichar" class="screen">
+  <div class="top-bar">
+    <div class="top-user">
+      <span class="avatar" id="fichar-avatar">--</span>
+      <div>
+        <div class="top-name" id="fichar-nombre">Cargando…</div>
+        <div class="top-sub" id="fichar-ubicacion">Sin ubicación</div>
+      </div>
+    </div>
+    <button class="icon-btn" id="btn-menu">☰</button>
+  </div>
+  <div class="fichar-center">
+    <div class="clock-ring">
+      <div class="clock-inner">
+        <div class="clock-time" id="clock-time">00:00</div>
+        <div class="clock-date" id="clock-date">—</div>
+      </div>
+    </div>
+    <div class="tipo-badge" id="tipo-badge">ENTRADA</div>
+    <div class="fichar-count" id="fichar-count">0 fichajes hoy</div>
+  </div>
+  <div class="fichar-actions">
+    <button class="btn btn-fichar" id="btn-fichar">
+      <span class="btn-icon">👆</span>
+      <span id="btn-fichar-text">Registrar ENTRADA</span>
+    </button>
+    <button class="btn btn-secondary" id="btn-manual">✏️ Fichaje manual</button>
+  </div>
+</div>
+
+<div id="screen-mis-fichajes" class="screen">
+  <div class="screen-header with-back">
+    <button class="back-btn" data-back="fichar">‹</button>
+    <h2>Mis Fichajes</h2>
+  </div>
+  <div class="filter-bar">
+    <input type="month" id="filter-mes" class="select-field sm"/>
+  </div>
+  <div id="lista-fichajes" class="fichajes-lista">
+    <div class="empty-state">Selecciona un mes</div>
+  </div>
+</div>
+
+<div id="screen-dashboard" class="screen">
+  <div class="screen-header with-back">
+    <button class="back-btn" data-back="fichar">‹</button>
+    <h2>Dashboard</h2>
+    <select id="dash-emp-select" class="select-field xs admin-only hidden"></select>
+  </div>
+  <div class="dashboard-scroll">
+    <div class="card">
+      <div class="card-label">Progreso Anual <span id="dash-año"></span></div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar" id="dash-barra-anual" style="width:0%"></div>
+      </div>
+      <div class="progress-stats">
+        <span id="dash-horas-real" class="stat-big">0h</span>
+        <span id="dash-horas-obj">/ 1770h</span>
+        <span id="dash-diferencial" class="diferencial"></span>
+      </div>
+    </div>
+    <div class="trimestres-grid" id="trimestres-grid"></div>
+    <div class="card">
+      <div class="card-label-row">
+        <span class="card-label">Calendario</span>
+        <input type="month" id="dash-mes" class="select-field xs"/>
+      </div>
+      <div id="calendario-grid" class="calendario"></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Esta semana</div>
+      <div id="semana-bars" class="semana-bars"></div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-empleados" class="screen admin-only hidden">
+  <div class="screen-header with-back">
+    <button class="back-btn" data-back="fichar">‹</button>
+    <h2>Empleados</h2>
+    <button class="btn btn-sm btn-primary" id="btn-nuevo-empleado">+ Nuevo</button>
+  </div>
+  <div id="lista-empleados" class="lista-admin"></div>
+</div>
+
+<div id="screen-ubicaciones" class="screen admin-only hidden">
+  <div class="screen-header with-back">
+    <button class="back-btn" data-back="fichar">‹</button>
+    <h2>Ubicaciones</h2>
+    <button class="btn btn-sm btn-primary" id="btn-nueva-ubicacion">+ Nueva</button>
+  </div>
+  <div id="lista-ubicaciones" class="lista-admin"></div>
+</div>
+
+<div id="screen-incidencias" class="screen">
+  <div class="screen-header with-back">
+    <button class="back-btn" data-back="fichar">‹</button>
+    <h2>Incidencias</h2>
+  </div>
+  <div id="lista-incidencias" class="lista-admin"></div>
+</div>
+
+<!-- MODALES -->
+<div id="modal-confirmar" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-icon" id="modal-icon">✅</div>
+    <h3 id="modal-titulo">Confirmar fichaje</h3>
+    <p id="modal-subtitulo" class="modal-sub"></p>
+    <div id="modal-resumen-horas" class="resumen-horas hidden">
+      <div class="resumen-label">Tiempo trabajado hoy</div>
+      <div class="resumen-valor" id="resumen-valor">0h</div>
+    </div>
+    <div id="modal-tipo-salida" class="tipo-salida-opts hidden">
+      <button class="btn btn-descanso" id="btn-descanso">🍽️ Descanso</button>
+      <button class="btn btn-salida-ok" id="btn-salida-ok">✅ Salida definitiva</button>
+    </div>
+    <label class="field-label">Comentario (opcional)</label>
+    <textarea id="modal-comentario" rows="2" placeholder="Añade una nota…" class="textarea-field"></textarea>
+    <div class="modal-btns" id="modal-btns-std">
+      <button class="btn btn-ghost" id="modal-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="modal-confirm">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-manual" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h3>Fichaje Manual</h3>
+    <div id="manual-emp-wrap" class="hidden">
+      <label class="field-label">Empleado</label>
+      <select id="manual-emp" class="select-field"></select>
+    </div>
+    <label class="field-label mt">Tipo</label>
+    <select id="manual-tipo" class="select-field">
+      <option value="ENTRADA">ENTRADA</option>
+      <option value="SALIDA">SALIDA</option>
+    </select>
+    <label class="field-label mt">Fecha</label>
+    <input type="date" id="manual-fecha" class="select-field"/>
+    <label class="field-label mt">Hora</label>
+    <input type="time" id="manual-hora" class="select-field"/>
+    <label class="field-label mt">Comentario</label>
+    <textarea id="manual-comentario" rows="2" class="textarea-field" placeholder="Motivo…"></textarea>
+    <div class="modal-btns mt">
+      <button class="btn btn-ghost" id="manual-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="manual-confirm">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-alarma" class="modal-overlay hidden">
+  <div class="modal-card center">
+    <div class="timer-display" id="timer-display">25:00</div>
+    <p class="timer-label">Tiempo de descanso</p>
+    <button class="btn btn-primary mt" id="btn-volver-fichar">Ya estoy de vuelta</button>
+    <button class="btn btn-ghost" id="btn-cancelar-timer">Cancelar alarma</button>
+  </div>
+</div>
+
+<div id="modal-empleado" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h3 id="emp-form-titulo">Nuevo Empleado</h3>
+    <input type="hidden" id="emp-id"/>
+    <label class="field-label mt">Nombre completo</label>
+    <input type="text" id="emp-nombre" class="select-field" placeholder="Juan García López"/>
+    <label class="field-label mt">Nº Empleado</label>
+    <input type="text" id="emp-numero" class="select-field" placeholder="001"/>
+    <label class="field-label mt">Email</label>
+    <input type="email" id="emp-email" class="select-field" placeholder="juan@empresa.com"/>
+    <label class="field-label mt">Telegram ID</label>
+    <input type="text" id="emp-tgid" class="select-field" placeholder="123456789"/>
+    <label class="field-label mt">Rol</label>
+    <select id="emp-rol" class="select-field">
+      <option value="empleado">Empleado</option>
+      <option value="admin">Admin</option>
+    </select>
+    <label class="field-label mt">Notificaciones</label>
+    <select id="emp-notif" class="select-field">
+      <option value="privado">Solo privado</option>
+      <option value="grupo">Solo grupo</option>
+      <option value="ambos">Ambos</option>
+      <option value="ninguno">Ninguno</option>
+    </select>
+    <label class="field-label mt">Horas anuales</label>
+    <input type="number" id="emp-horas" class="select-field" value="1770"/>
+    <div class="trimestres-inputs">
+      <div><label class="field-label mt">Q1</label><input type="number" id="emp-q1" class="select-field" placeholder="0"/></div>
+      <div><label class="field-label mt">Q2</label><input type="number" id="emp-q2" class="select-field" placeholder="0"/></div>
+      <div><label class="field-label mt">Q3</label><input type="number" id="emp-q3" class="select-field" placeholder="0"/></div>
+      <div><label class="field-label mt">Q4</label><input type="number" id="emp-q4" class="select-field" placeholder="0"/></div>
+    </div>
+    <label class="field-label mt">Confirmar fichaje</label>
+    <select id="emp-confirmar" class="select-field">
+      <option value="true">Sí</option>
+      <option value="false">No</option>
+    </select>
+    <div class="modal-btns mt">
+      <button class="btn btn-ghost" id="emp-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="emp-save">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- SIDEBAR -->
+<div id="sidebar" class="sidebar hidden">
+  <div class="sidebar-header">
+    <span class="avatar lg" id="sidebar-avatar">--</span>
+    <div>
+      <div class="sidebar-name" id="sidebar-name">—</div>
+      <div class="sidebar-role" id="sidebar-role">—</div>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-view="fichar">⏱ Fichar</button>
+    <button class="nav-item" data-view="mis-fichajes">📋 Mis fichajes</button>
+    <button class="nav-item" data-view="dashboard">📊 Dashboard</button>
+    <button class="nav-item" data-view="incidencias">⚠️ Incidencias</button>
+    <div class="nav-sep admin-only hidden"></div>
+    <button class="nav-item admin-only hidden" data-view="empleados">👥 Empleados</button>
+    <button class="nav-item admin-only hidden" data-view="ubicaciones">📍 Ubicaciones</button>
+  </nav>
+</div>
+<div id="sidebar-overlay" class="sidebar-overlay hidden"></div>
+<div id="toast" class="toast hidden"></div>
+
+<script>const APPS_SCRIPT_URL = https://script.google.com/macros/s/AKfycbylcffpbyBZXhqLWcNS3BOHEvIXEeupS1oBJukKaCDgjpLbC4LlOXsJyY-z6hj8Rerp/exec;</script>
+<script src="app.js"></script>
+</body>
+</html>
