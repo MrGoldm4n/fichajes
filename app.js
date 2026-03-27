@@ -25,15 +25,18 @@ async function api(action, data = {}) {
 
   if (isWrite) {
     const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action, telegramId, ...data }),
+      method:   'POST',
+      redirect: 'follow',
+      body:     JSON.stringify({ action, telegramId, ...data }),
     });
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     return json;
   } else {
     const params = new URLSearchParams({ action, telegramId, ...data });
-    const res = await fetch(APPS_SCRIPT_URL + '?' + params.toString());
+    const res = await fetch(APPS_SCRIPT_URL + '?' + params.toString(), {
+      redirect: 'follow',
+    });
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     return json;
