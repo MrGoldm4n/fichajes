@@ -662,3 +662,63 @@ function calcularHorasDia(fichajes) {
 function calcularHorasTrabajadas() {
   return calcularHorasDia(state.estadoHoy?.fichajesHoy||[])||'0h';
 }
+const GOOGLE_CLIENT_ID = 'TU_CLIENT_ID.apps.googleusercontent.com';
+
+// ── DETECCIÓN AUTOMÁTICA ──────────────────────────────
+function initApp() {
+  const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+
+  if (tgUser?.id) {
+    // Viene desde Telegram → login automático
+    loginWithTelegram(tgUser);
+  } else {
+    // Viene desde navegador → mostrar pantalla de login con Google
+    showGoogleLoginScreen();
+  }
+}
+
+// ── PANTALLA LOGIN NAVEGADOR ──────────────────────────
+function showGoogleLoginScreen() {
+  document.getElementById('app').innerHTML = `
+    <div class="login-screen">
+      <img src="logo.png" class="logo" />
+      <h2>Control de Presencia</h2>
+      <p>Accede con tu cuenta de empresa</p>
+      <div id="googleBtn"></div>
+    </div>
+  `;
+
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleGoogleLogin
+  });
+
+  google.accounts.id.renderButton(
+    document.getElementById('googleBtn'),
+    { theme: 'filled_blue', size: 'large', text: 'signin_with', locale: 'es' }
+  );
+}
+
+// ── CALLBACK GOOGLE LOGIN ─────────────────────────────
+function handleGoogleLogin(response) {
+  // Decodificar JWT para obtener email (el token se verifica en el backend)
+  const payload = JSON.parse(atob(response.credential.split('.')[1]));
+
+  fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'loginGoogle',
+      token: response.credential,   // JWT completo para verificar en backend
+      email: payload.email
+    })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      currentUser = data.empleado;
+      renderMainApp();
+    } else {
+      showError('❌ ' + data.message);
+    }
+  });
+}
