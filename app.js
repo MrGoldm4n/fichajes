@@ -3,7 +3,7 @@
 // Telegram Mini App + Google Login + Apps Script API
 // =====================================================
 
-const GOOGLE_CLIENT_ID = 'https://920497100034-08on4kifjrp7l80doe6ucs49ahop5v8c.apps.googleusercontent.com'; // ← CAMBIA ESTO
+const GOOGLE_CLIENT_ID = '920497100034-08on4kifjrp7l80doe6ucs49ahop5v8c.apps.googleusercontent.com'; // ← CAMBIA ESTO
 const tg = window.Telegram?.WebApp;
 
 const state = {
@@ -377,7 +377,188 @@ async function renderFichajesMes(mesStr) {
 }
 
 async function cargarEmpleados() {
-  state.empleados =
+  state.empleados = await api('getEmpleados');
+  document.getElementById('lista-empleados').innerHTML = state.empleados.map(e => `
+    <div class="admin-card">
+      <div class="admin-card-info">
+        <div class="admin-card-name">${e.Nombre_Completo}</div>
+        <div class="admin-card-sub">${e.Numero_Empleado} · ${e.Rol} · ${e.Activo==='true'?'✅ Activo':'🔴 Baja'}</div>
+        <div class="admin-card-sub">TG: ${e.Telegram_ID||'—'} · ${e.Notificaciones||'privado'}</div>
+      </div>
+      <button class="btn btn-sm btn-ghost" onclick="abrirFormEmpleado('${e.ID_Empleado}')">✏️</button>
+    </div>`).join('');
+}
+
+function abrirFormEmpleado(id) {
+  const emp = id ? state.empleados.find(e=>e.ID_Empleado===id) : null;
+  document.getElementById('emp-form-titulo').textContent = emp ? 'Editar Empleado' : 'Nuevo Empleado';
+  document.getElementById('emp-id').value        = emp?.ID_Empleado||'';
+  document.getElementById('emp-nombre').value    = emp?.Nombre_Completo||'';
+  document.getElementById('emp-numero').value    = emp?.Numero_Empleado||'';
+  document.getElementById('emp-email').value     = emp?.Email||'';
+  document.getElementById('emp-tgid').value      = emp?.Telegram_ID||'';
+  document.getElementById('emp-rol').value       = emp?.Rol||'empleado';
+  document.getElementById('emp-notif').value     = emp?.Notificaciones||'privado';
+  document.getElementById('emp-horas').value     = emp?.Horas_Anuales||'1770';
+  document.getElementById('emp-q1').value        = emp?.Q1||'';
+  document.getElementById('emp-q2').value        = emp?.Q2||'';
+  document.getElementById('emp-q3').value        = emp?.Q3||'';
+  document.getElementById('emp-q4').value        = emp?.Q4||'';
+  document.getElementById('emp-confirmar').value = emp?.Confirmar_Fichaje||'true';
+  document.getElementById('modal-empleado').classList.remove('hidden');
+}
+
+async function guardarEmpleadoForm() {
+  document.getElementById('modal-empleado').classList.add('hidden');
+  try {
+    const res = await api('guardarEmpleado', {
+      ID_Empleado:       document.getElementById('emp-id').value,
+      Nombre_Completo:   document.getElementById('emp-nombre').value,
+      Numero_Empleado:   document.getElementById('emp-numero').value,
+      Email:             document.getElementById('emp-email').value,
+      Telegram_ID:       document.getElementById('emp-tgid').value,
+      Rol:               document.getElementById('emp-rol').value,
+      Notificaciones:    document.getElementById('emp-notif').value,
+      Horas_Anuales:     document.getElementById('emp-horas').value,
+      Q1: document.getElementById('emp-q1').value,
+      Q2: document.getElementById('emp-q2').value,
+      Q3: document.getElementById('emp-q3').value,
+      Q4: document.getElementById('emp-q4').value,
+      Confirmar_Fichaje: document.getElementById('emp-confirmar').value,
+      Activo: 'true',
+    });
+    if (res.ok) { toast('✅ Empleado guardado', 'ok'); await cargarEmpleados(); }
+  } catch(err) { toast('❌ ' + err.message, 'error'); }
+}
+
+async function cargarUbicaciones() {
+  state.ubicaciones = await api('getUbicaciones');
+  document.getElementById('lista-ubicaciones').innerHTML = state.ubicaciones.map(u => `
+    <div class="admin-card">
+      <div class="admin-card-info">
+        <div class="admin-card-name">${u.Nombre}</div>
+        <div class="admin-card-sub">ID: ${u.ID_Ubicacion} · NFC: ${u.NFC_Param}</div>
+        <div class="admin-card-sub nfc-url">🔗 ${APPS_SCRIPT_URL}?loc=${u.NFC_Param}</div>
+      </div>
+    </div>`).join('');
+}
+
+async function cargarIncidencias() {
+  const lista = await api('getIncidencias');
+  const cont  = document.getElementById('lista-incidencias');
+  if (!lista.length) { cont.innerHTML='<div class="empty-state">Sin incidencias 🎉</div>'; return; }
+  cont.innerHTML = lista.map(inc => `
+    <div class="admin-card">
+      <div class="admin-card-info">
+        <div class="admin-card-name">${inc.Empleado_Nombre}</div>
+        <div class="admin-card-sub">${inc.Fecha} — ${inc.Descripcion}</div>
+        <span class="badge ${inc.Estado==='PENDIENTE'?'badge-error':'badge-ok'}">${inc.Estado}</span>
+      </div>
+      ${inc.Estado==='PENDIENTE'&&state.empleado?.Rol==='admin'
+        ?`<button class="btn btn-sm btn-primary" onclick="resolverInc('${inc.ID}')">✔ Resolver</button>`:''}
+    </div>`).join('');
+}
+
+async function resolverInc(id) {
+  await api('resolverIncidencia', { id });
+  toast('✅ Resuelta', 'ok');
+  await cargarIncidencias();
+}
+
+function setupNavegacion() {
+  document.getElementById('btn-menu').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.remove('hidden');
+    document.getElementById('sidebar-overlay').classList.remove('hidden');
+  });
+  document.getElementById('sidebar-overlay').addEventListener('click', cerrarSidebar);
+  document.querySelectorAll('.nav-item[data-view]').forEach(btn =>
+    btn.addEventListener('click', () => { navegarA(btn.dataset.view); cerrarSidebar(); }));
+  document.querySelectorAll('.back-btn[data-back]').forEach(btn =>
+    btn.addEventListener('click', () => navegarA(btn.dataset.back)));
+}
+
+async function navegarA(view) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const mapa = {
+    fichar:         'screen-fichar',
+    'mis-fichajes': 'screen-mis-fichajes',
+    dashboard:      'screen-dashboard',
+    empleados:      'screen-empleados',
+    ubicaciones:    'screen-ubicaciones',
+    incidencias:    'screen-incidencias'
+  };
+  document.getElementById(mapa[view])?.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n =>
+    n.classList.toggle('active', n.dataset.view===view));
+  if (view==='dashboard')    await cargarDashboard();
+  if (view==='mis-fichajes') await cargarMisFichajes();
+  if (view==='incidencias')  await cargarIncidencias();
+  if (view==='empleados')    await cargarEmpleados();
+  if (view==='ubicaciones')  await cargarUbicaciones();
+}
+
+function cerrarSidebar() {
+  document.getElementById('sidebar').classList.add('hidden');
+  document.getElementById('sidebar-overlay').classList.add('hidden');
+}
+
+function iniciarReloj() {
+  const tick = () => {
+    const now = new Date();
+    document.getElementById('clock-time').textContent =
+      String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    document.getElementById('clock-date').textContent = formatearFecha(fechaHoy());
+  };
+  tick(); setInterval(tick, 1000);
+}
+
+function toast(msg, tipo='ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + tipo;
+  setTimeout(() => el.className='toast hidden', 3200);
+}
+
+function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+
+function horaActual() {
+  const n = new Date();
+  return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+}
+
+function fechaHoy() {
+  const n = new Date();
+  return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
+}
+
+function formatearFecha(str) {
+  if (!str) return '';
+  const [y,m,d] = str.split('-');
+  const dias  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const f = new Date(parseInt(y),parseInt(m)-1,parseInt(d));
+  return dias[f.getDay()]+' '+parseInt(d)+' '+meses[parseInt(m)-1];
+}
+
+function calcularHorasDia(fichajes) {
+  if (!fichajes||fichajes.length<2) return null;
+  const ord = [...fichajes].sort((a,b)=>a.Hora.localeCompare(b.Hora));
+  let mins = 0;
+  for (let i=0; i<ord.length-1; i+=2) {
+    if (ord[i].Tipo==='ENTRADA'&&ord[i+1]?.Tipo==='SALIDA') {
+      const [hE,mE]=ord[i].Hora.split(':').map(Number);
+      const [hS,mS]=ord[i+1].Hora.split(':').map(Number);
+      mins += (hS*60+mS)-(hE*60+mE);
+    }
+  }
+  if (mins<=0) return null;
+  return Math.floor(mins/60)+'h'+(mins%60>0?' '+mins%60+'m':'');
+}
+
+function calcularHorasTrabajadas() {
+  return calcularHorasDia(state.estadoHoy?.fichajesHoy||[])||'0h';
+}
+
 function formatearFecha(str) {
   if (!str) return '';
   const [y,m,d] = str.split('-');
