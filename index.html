@@ -19,6 +19,17 @@
   </div>
 </div>
 
+<!-- NUEVO: Pantalla login Google (solo navegador) -->
+<div id="screen-login" class="screen">
+  <div class="login-container">
+    <div class="login-logo">⏱</div>
+    <h1 class="login-title">Fichajes</h1>
+    <p class="login-sub">Accede con tu cuenta de empresa</p>
+    <div id="google-btn"></div>
+    <p id="login-status" class="login-status"></p>
+  </div>
+</div>
+
 <div id="screen-noauth" class="screen">
   <div class="noauth-inner">
     <div class="noauth-icon">🔒</div>
@@ -81,9 +92,7 @@
   <div class="dashboard-scroll">
     <div class="card">
       <div class="card-label">Progreso Anual <span id="dash-año"></span></div>
-      <div class="progress-bar-wrap">
-        <div class="progress-bar" id="dash-barra-anual" style="width:0%"></div>
-      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar" id="dash-barra-anual" style="width:0%"></div></div>
       <div class="progress-stats">
         <span id="dash-horas-real" class="stat-big">0h</span>
         <span id="dash-horas-obj">/ 1770h</span>
@@ -131,7 +140,6 @@
   <div id="lista-incidencias" class="lista-admin"></div>
 </div>
 
-<!-- MODALES -->
 <div id="modal-confirmar" class="modal-overlay hidden">
   <div class="modal-card">
     <div class="modal-icon" id="modal-icon">✅</div>
@@ -232,7 +240,6 @@
   </div>
 </div>
 
-<!-- SIDEBAR -->
 <div id="sidebar" class="sidebar hidden">
   <div class="sidebar-header">
     <span class="avatar lg" id="sidebar-avatar">--</span>
