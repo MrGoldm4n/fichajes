@@ -378,3 +378,28 @@ async function renderFichajesMes(mesStr) {
 
 async function cargarEmpleados() {
   state.empleados =
+function formatearFecha(str) {
+  if (!str) return '';
+  const [y,m,d] = str.split('-');
+  const dias  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const f = new Date(parseInt(y),parseInt(m)-1,parseInt(d));
+  return dias[f.getDay()]+' '+parseInt(d)+' '+meses[parseInt(m)-1];
+}
+
+function calcularHorasDia(fichajes) {
+  if (!fichajes||fichajes.length<2) return null;
+  const ord = [...fichajes].sort((a,b)=>a.Hora.localeCompare(b.Hora));
+  let mins = 0;
+  for (let i=0; i<ord.length-1; i+=2) {
+    if (ord[i].Tipo==='ENTRADA'&&ord[i+1]?.Tipo==='SALIDA') {
+      const [hE,mE]=ord[i].Hora.split(':').map(Number);
+      const [hS,mS]=ord[i+1].Hora.split(':').map(Number);
+      mins += (hS*60+mS)-(hE*60+mE);
+    }
+  }
+  if (mins<=0) return null;
+  return Math.floor(mins/60)+'h'+(mins%60>0?' '+mins%60+'m':'');
+}
+
+function calcularHorasTrabajadas() { return calcularHorasDia(state.estadoHoy?.fichajesHoy||[])||'0h'; }
