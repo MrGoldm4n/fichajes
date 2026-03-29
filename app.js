@@ -1,38 +1,20 @@
-// =====================================================
-// FICHAJES v0.4.0 — app.js
-// Telegram Mini App + Google Login + Apps Script API
-// =====================================================
-
-const GOOGLE_CLIENT_ID = '920497100034-08on4kifjrp7l80doe6ucs49ahop5v8c.apps.googleusercontent.com'; // ← CAMBIA ESTO
+// FICHAJES v0.5.0 — app.js (LIMPIO)
+const GOOGLE_CLIENT_ID = '920497100034-08on4kifjrp7l80doe6ucs49ahop5v8c.apps.googleusercontent.com';
 const tg = window.Telegram?.WebApp;
-
-const state = {
-  empleado:      null,
-  ubicacion:     null,
-  estadoHoy:     null,
-  timerInterval: null,
-  timerSeconds:  0,
-  empleados:     [],
-  ubicaciones:   [],
-  config:        {},
-};
+const state = { empleado:null, ubicacion:null, estadoHoy:null, timerInterval:null, timerSeconds:0, empleados:[], ubicaciones:[], config:{} };
 
 async function api(action, data = {}) {
   const telegramId  = tg?.initDataUnsafe?.user?.id || '';
   const emailGoogle = state.empleado?.emailGoogle || '';
-  const isWrite = ['fichar','corregirFichaje','guardarEmpleado',
-    'guardarUbicacion','resolverIncidencia','guardarConfig','loginGoogle'].includes(action);
+  const isWrite = ['fichar','corregirFichaje','guardarEmpleado','guardarUbicacion','resolverIncidencia','guardarConfig','loginGoogle'].includes(action);
   if (isWrite) {
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST', redirect: 'follow',
-      body: JSON.stringify({ action, telegramId, emailGoogle, ...data }),
-    });
+    const res = await fetch(APPS_SCRIPT_URL, { method:'POST', redirect:'follow', body: JSON.stringify({ action, telegramId, emailGoogle, ...data }) });
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     return json;
   } else {
     const params = new URLSearchParams({ action, telegramId, emailGoogle, ...data });
-    const res = await fetch(APPS_SCRIPT_URL + '?' + params.toString(), { redirect: 'follow' });
+    const res = await fetch(APPS_SCRIPT_URL + '?' + params.toString(), { redirect:'follow' });
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     return json;
@@ -46,7 +28,19 @@ window.addEventListener('load', async () => {
   if (tgUser?.id) {
     await arrancarApp();
   } else {
-    mostrarLoginGoogle();
+    const empGuardado = localStorage.getItem('fichajes_emp');
+    if (empGuardado) {
+      try {
+        state.empleado = JSON.parse(empGuardado);
+        document.getElementById('splash').classList.remove('active');
+        await arrancarApp(true);
+      } catch(e) {
+        localStorage.removeItem('fichajes_emp');
+        mostrarLoginGoogle();
+      }
+    } else {
+      mostrarLoginGoogle();
+    }
   }
 });
 
@@ -57,31 +51,27 @@ function mostrarLoginGoogle() {
     if (typeof google !== 'undefined' && google.accounts) {
       clearInterval(intentar);
       google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleLogin });
-      google.accounts.id.renderButton(
-        document.getElementById('google-btn'),
-        { theme: 'filled_blue', size: 'large', text: 'signin_with', locale: 'es', width: 280 }
-      );
+      google.accounts.id.renderButton(document.getElementById('google-btn'),
+        { theme:'filled_blue', size:'large', text:'signin_with', locale:'es', width:280 });
     }
   }, 200);
 }
 
 async function handleGoogleLogin(response) {
   const statusEl = document.getElementById('login-status');
-  statusEl.textContent = 'Verificando…';
-  statusEl.className = 'login-status';
+  statusEl.textContent = 'Verificando…'; statusEl.className = 'login-status';
   try {
     const payload = JSON.parse(atob(response.credential.split('.')[1]));
-    const res = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST', redirect: 'follow',
-      body: JSON.stringify({ action: 'loginGoogle', token: response.credential, email: payload.email }),
-    });
+    const res = await fetch(APPS_SCRIPT_URL, { method:'POST', redirect:'follow',
+      body: JSON.stringify({ action:'loginGoogle', token:response.credential, email:payload.email }) });
     const data = await res.json();
     if (data.success) {
       state.empleado = { ...data.empleado, emailGoogle: payload.email };
+      localStorage.setItem('fichajes_emp', JSON.stringify(state.empleado));
       document.getElementById('screen-login').classList.remove('active');
       await arrancarApp(true);
     } else {
-      statusEl.textContent = data.message || 'No autorizado. Contacta con el administrador.';
+      statusEl.textContent = data.message || 'No autorizado.';
       statusEl.className = 'login-status login-error';
     }
   } catch(err) {
@@ -103,7 +93,7 @@ async function arrancarApp(yaAutenticado = false) {
     }
     actualizarUIEmpleado(emp);
     const urlParams = new URLSearchParams(window.location.search);
-    const locParam  = tg?.initDataUnsafe?.start_param || urlParams.get('loc') || '';
+    const locParam = tg?.initDataUnsafe?.start_param || urlParams.get('loc') || '';
     if (locParam) {
       state.ubicacion = state.ubicaciones.find(u => u.NFC_Param === locParam || u.ID_Ubicacion === locParam) || null;
       if (state.ubicacion) document.getElementById('fichar-ubicacion').textContent = '📍 ' + state.ubicacion.Nombre;
@@ -112,7 +102,7 @@ async function arrancarApp(yaAutenticado = false) {
     if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
     if (locParam && state.ubicacion) await prepararFichaje(true);
   } catch(err) {
-    if (err.message.includes('No autorizado')) mostrarNoAuth('');
+    if (err.message.includes('No autorizado')) { localStorage.removeItem('fichajes_emp'); mostrarNoAuth(''); }
     else toast('Error: ' + err.message, 'error');
     ocultarSplash('noauth'); return;
   }
@@ -137,30 +127,21 @@ function actualizarUIFichaje() {
   const s = state.estadoHoy; if (!s) return;
   const esSalida = s.proximoTipo === 'SALIDA';
   const badge = document.getElementById('tipo-badge');
-  badge.textContent = s.proximoTipo;
-  badge.className   = 'tipo-badge' + (esSalida ? ' salida' : '');
-  const btn = document.getElementById('btn-fichar');
-  btn.className = 'btn btn-fichar' + (esSalida ? ' salida' : '');
-  document.getElementById('btn-fichar-text').textContent =
-    'Fichar ' + s.proximoTipo;
-  document.getElementById('fichar-count').textContent =
-    s.totalFichajesHoy + ' fichaje' + (s.totalFichajesHoy !== 1 ? 's' : '') + ' hoy';
-
-  // Mostrar botón alarma si hay al menos 1 fichaje hoy
+  badge.textContent = s.proximoTipo; badge.className = 'tipo-badge' + (esSalida ? ' salida' : '');
+  document.getElementById('btn-fichar').className = 'btn btn-fichar' + (esSalida ? ' salida' : '');
+  document.getElementById('btn-fichar-text').textContent = 'Fichar';
+  document.getElementById('fichar-count').textContent = s.totalFichajesHoy + ' fichaje' + (s.totalFichajesHoy!==1?'s':'') + ' hoy';
   const btnAlarma = document.getElementById('btn-alarma');
   if (s.totalFichajesHoy >= 1) btnAlarma.classList.remove('hidden');
   else btnAlarma.classList.add('hidden');
 }
 
-
 async function prepararFichaje(autoConfirm) {
   await refreshEstado();
-  const tipo     = state.estadoHoy?.proximoTipo || 'ENTRADA';
+  const tipo = state.estadoHoy?.proximoTipo || 'ENTRADA';
   const confirmar = state.empleado?.Confirmar_Fichaje !== 'false';
-
   if (!autoConfirm && confirmar) {
-    // Modal simple con cancelar
-    document.getElementById('modal-icon').textContent      = tipo === 'ENTRADA' ? '🟢' : '🔴';
+    document.getElementById('modal-icon').textContent      = tipo==='ENTRADA' ? '🟢' : '🔴';
     document.getElementById('modal-titulo').textContent    = 'Confirmar fichaje';
     document.getElementById('modal-subtitulo').textContent = tipo + ' — ' + horaActual();
     document.getElementById('modal-resumen-horas').classList.add('hidden');
@@ -181,61 +162,13 @@ async function ejecutarFichaje({ comentario }) {
       comentario,
       ubicacionId:     state.ubicacion?.ID_Ubicacion || '',
       ubicacionNombre: state.ubicacion?.Nombre || 'Manual',
-      metodo:          state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user ? 'MINI_APP' : 'WEB'),
+      metodo: state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user ? 'MINI_APP' : 'WEB'),
     });
     if (res.ok) {
       tg?.HapticFeedback?.notificationOccurred('success');
       toast('✅ ' + res.tipo + ' a las ' + res.hora, 'ok');
       await refreshEstado();
-      // Alarma automática en fichaje par (primera salida = número 2, 4, 6...)
       if (res.fichajeNum % 2 === 0) iniciarTimerDescanso();
-    }
-  } catch(err) {
-    tg?.HapticFeedback?.notificationOccurred('error');
-    toast('❌ ' + err.message, 'error');
-  }
-}
-
-
-function mostrarModalConfirmar(tipo) {
-  document.getElementById('modal-icon').textContent      = tipo==='ENTRADA' ? '🟢' : '🔴';
-  document.getElementById('modal-titulo').textContent    = 'Confirmar ' + tipo;
-  document.getElementById('modal-subtitulo').textContent = tipo + ' — ' + horaActual();
-  document.getElementById('modal-resumen-horas').classList.add('hidden');
-  document.getElementById('modal-tipo-salida').classList.add('hidden');
-  document.getElementById('modal-btns-std').classList.remove('hidden');
-  document.getElementById('modal-comentario').value = '';
-  document.getElementById('modal-confirmar').classList.remove('hidden');
-}
-
-function mostrarModalSalida() {
-  document.getElementById('modal-icon').textContent      = '🔴';
-  document.getElementById('modal-titulo').textContent    = 'Registrar Salida';
-  document.getElementById('modal-subtitulo').textContent = 'Salida — ' + horaActual();
-  document.getElementById('resumen-valor').textContent   = calcularHorasTrabajadas();
-  document.getElementById('modal-resumen-horas').classList.remove('hidden');
-  document.getElementById('modal-tipo-salida').classList.remove('hidden');
-  document.getElementById('modal-btns-std').classList.add('hidden');
-  document.getElementById('modal-comentario').value = '';
-  document.getElementById('modal-confirmar').classList.remove('hidden');
-}
-
-async function ejecutarFichaje({ tipo, esDescanso, comentario }) {
-  document.getElementById('modal-confirmar').classList.add('hidden');
-  toast('Registrando…');
-  try {
-    tg?.HapticFeedback?.impactOccurred('medium');
-    const res = await api('fichar', {
-      tipo, esDescanso, comentario,
-      ubicacionId:     state.ubicacion?.ID_Ubicacion || '',
-      ubicacionNombre: state.ubicacion?.Nombre || 'Manual',
-      metodo:          state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user ? 'MINI_APP' : 'WEB'),
-    });
-    if (res.ok) {
-      tg?.HapticFeedback?.notificationOccurred('success');
-      toast('✅ ' + tipo + ' a las ' + horaActual(), 'ok');
-      await refreshEstado();
-      if (esDescanso) iniciarTimerDescanso();
     }
   } catch(err) { tg?.HapticFeedback?.notificationOccurred('error'); toast('❌ ' + err.message, 'error'); }
 }
@@ -243,42 +176,13 @@ async function ejecutarFichaje({ tipo, esDescanso, comentario }) {
 function setupModales() {
   document.getElementById('btn-fichar').addEventListener('click', () => prepararFichaje(false));
   document.getElementById('modal-cancel').addEventListener('click', () => document.getElementById('modal-confirmar').classList.add('hidden'));
-  // Botón principal fichar
-document.getElementById('btn-fichar').addEventListener('click', () => prepararFichaje(false));
-
-// Modal confirmar — cancelar
-document.getElementById('modal-cancel').addEventListener('click', () =>
-  document.getElementById('modal-confirmar').classList.add('hidden'));
-
-// Modal confirmar — confirmar
-document.getElementById('modal-confirm').addEventListener('click', async () =>
-  ejecutarFichaje({ comentario: document.getElementById('modal-comentario').value.trim() }));
-
-// Botón alarma manual
-document.getElementById('btn-alarma').addEventListener('click', () => iniciarTimerDescanso());
-
-// Timer — ya estoy de vuelta → registra fichaje directo
-document.getElementById('btn-volver-fichar').addEventListener('click', () => {
-  clearInterval(state.timerInterval);
-  document.getElementById('modal-alarma').classList.add('hidden');
-  prepararFichaje(false);
-});
-
-// Timer — cancelar alarma
-document.getElementById('btn-cancelar-timer').addEventListener('click', () => {
-  clearInterval(state.timerInterval);
-  document.getElementById('modal-alarma').classList.add('hidden');
-});
-
-  document.getElementById('btn-descanso').addEventListener('click', async () =>
-    ejecutarFichaje({ tipo: 'SALIDA', esDescanso: true, comentario: document.getElementById('modal-comentario').value.trim() }));
-  document.getElementById('btn-salida-ok').addEventListener('click', async () =>
-    ejecutarFichaje({ tipo: 'SALIDA', esDescanso: false, comentario: document.getElementById('modal-comentario').value.trim() }));
+  document.getElementById('modal-confirm').addEventListener('click', async () =>
+    ejecutarFichaje({ comentario: document.getElementById('modal-comentario').value.trim() }));
+  document.getElementById('btn-alarma').addEventListener('click', () => iniciarTimerDescanso());
 
   document.getElementById('btn-manual').addEventListener('click', async () => {
     document.getElementById('manual-fecha').value = fechaHoy();
     document.getElementById('manual-hora').value  = horaActual();
-    document.getElementById('manual-tipo').value  = state.estadoHoy?.proximoTipo || 'ENTRADA';
     document.getElementById('manual-comentario').value = '';
     const wrap = document.getElementById('manual-emp-wrap');
     if (state.empleado?.Rol === 'admin') {
@@ -294,11 +198,11 @@ document.getElementById('btn-cancelar-timer').addEventListener('click', () => {
     document.getElementById('modal-manual').classList.add('hidden');
     try {
       const res = await api('fichar', {
-        tipo: document.getElementById('manual-tipo').value,
         fecha: document.getElementById('manual-fecha').value,
-        hora: document.getElementById('manual-hora').value + ':00',
+        hora:  document.getElementById('manual-hora').value + ':00',
         comentario: document.getElementById('manual-comentario').value.trim(),
-        ubicacionNombre: 'Manual', metodo: 'MANUAL', esDescanso: false,
+        ubicacionNombre: 'Manual', metodo: 'MANUAL',
+        numEmpleadoManual: document.getElementById('manual-emp')?.value || '',
       });
       if (res.ok) { toast('✅ Fichaje manual registrado', 'ok'); await refreshEstado(); }
     } catch(err) { toast('❌ ' + err.message, 'error'); }
@@ -314,7 +218,6 @@ document.getElementById('btn-cancelar-timer').addEventListener('click', () => {
   document.getElementById('btn-nuevo-empleado')?.addEventListener('click', () => abrirFormEmpleado(null));
   document.getElementById('emp-cancel').addEventListener('click', () => document.getElementById('modal-empleado').classList.add('hidden'));
   document.getElementById('emp-save').addEventListener('click', guardarEmpleadoForm);
-  document.getElementById('btn-exportar-pdf')?.addEventListener('click', () => toast('PDF en próxima versión', 'info'));
 }
 
 function iniciarTimerDescanso() {
@@ -324,8 +227,7 @@ function iniciarTimerDescanso() {
   actualizarTimerDisplay();
   clearInterval(state.timerInterval);
   state.timerInterval = setInterval(() => {
-    state.timerSeconds--;
-    actualizarTimerDisplay();
+    state.timerSeconds--; actualizarTimerDisplay();
     if (state.timerSeconds <= 0) {
       clearInterval(state.timerInterval);
       toast('⏰ Descanso completado. ¡Ficha de nuevo!', 'warning');
@@ -333,7 +235,6 @@ function iniciarTimerDescanso() {
     }
   }, 1000);
 }
-
 
 function actualizarTimerDisplay() {
   const m = String(Math.floor(state.timerSeconds/60)).padStart(2,'0');
@@ -344,11 +245,12 @@ function actualizarTimerDisplay() {
 async function cargarDashboard() {
   const año = new Date().getFullYear().toString();
   document.getElementById('dash-año').textContent = año;
+  const sel = document.getElementById('dash-emp-select');
   if (state.empleado?.Rol === 'admin') {
     if (!state.empleados.length) state.empleados = await api('getEmpleados');
-    const sel = document.getElementById('dash-emp-select');
     sel.innerHTML = state.empleados.map(e => `<option value="${e.Numero_Empleado}">${e.Nombre_Completo}</option>`).join('');
     sel.value = state.empleado.Numero_Empleado;
+    sel.classList.remove('hidden');
     sel.addEventListener('change', () => cargarResumen(sel.value, año));
   }
   await cargarResumen(state.empleado.Numero_Empleado, año);
@@ -374,7 +276,7 @@ async function cargarResumen(numEmp, año) {
 function renderTrimestres(resumen, año) {
   const trimActual = Math.floor(new Date().getMonth() / 3);
   document.getElementById('trimestres-grid').innerHTML = ['Q1','Q2','Q3','Q4'].map((t,i) => {
-    const obj = resumen.objetivosPorTrimestre[t] || null;
+    const obj = resumen.objetivosPorTrimestre?.[t] || null;
     const cls = i===trimActual?'activo':i<trimActual?'completado':'';
     const ini = i*3+1, fin = i*3+3;
     const hTrim = (resumen.detalleDias||[]).filter(d=>{ const m=parseInt(d.fecha.split('-')[1]); return m>=ini&&m<=fin; }).reduce((a,b)=>a+b.horas,0);
@@ -443,7 +345,6 @@ async function renderFichajesMes(mesStr) {
           <div class="fich-detalle">
             <div class="fich-ubi">${f.Ubicacion_Nombre||'—'}</div>
             ${f.Comentario?`<div class="fich-coment">"${f.Comentario}"</div>`:''}
-            ${f.Es_Descanso==='true'?'<div class="fich-descanso">🍽️ Descanso</div>':''}
           </div>
           <span class="fich-metodo">${f.Metodo}</span>
         </div>`).join('')}
@@ -458,7 +359,7 @@ async function cargarEmpleados() {
       <div class="admin-card-info">
         <div class="admin-card-name">${e.Nombre_Completo}</div>
         <div class="admin-card-sub">${e.Numero_Empleado} · ${e.Rol} · ${e.Activo==='true'?'✅ Activo':'🔴 Baja'}</div>
-        <div class="admin-card-sub">TG: ${e.Telegram_ID||'—'} · ${e.Notificaciones||'privado'}</div>
+        <div class="admin-card-sub">TG: ${e.Telegram_ID||'—'} · Email: ${e.Email||'—'}</div>
       </div>
       <button class="btn btn-sm btn-ghost" onclick="abrirFormEmpleado('${e.ID_Empleado}')">✏️</button>
     </div>`).join('');
@@ -475,14 +376,13 @@ function abrirFormEmpleado(id) {
   document.getElementById('emp-rol').value       = emp?.Rol||'empleado';
   document.getElementById('emp-notif').value     = emp?.Notificaciones||'privado';
   document.getElementById('emp-horas').value     = emp?.Horas_Anuales||'1770';
+  document.getElementById('emp-alarma').value    = emp?.Alarma_Descanso||'25';
   document.getElementById('emp-q1').value        = emp?.Q1||'';
   document.getElementById('emp-q2').value        = emp?.Q2||'';
   document.getElementById('emp-q3').value        = emp?.Q3||'';
   document.getElementById('emp-q4').value        = emp?.Q4||'';
   document.getElementById('emp-confirmar').value = emp?.Confirmar_Fichaje||'true';
   document.getElementById('modal-empleado').classList.remove('hidden');
-  document.getElementById('emp-alarma').value = emp?.Alarma_Descanso || '25';
-
 }
 
 async function guardarEmpleadoForm() {
@@ -497,13 +397,13 @@ async function guardarEmpleadoForm() {
       Rol:               document.getElementById('emp-rol').value,
       Notificaciones:    document.getElementById('emp-notif').value,
       Horas_Anuales:     document.getElementById('emp-horas').value,
+      Alarma_Descanso:   document.getElementById('emp-alarma').value,
       Q1: document.getElementById('emp-q1').value,
       Q2: document.getElementById('emp-q2').value,
       Q3: document.getElementById('emp-q3').value,
       Q4: document.getElementById('emp-q4').value,
       Confirmar_Fichaje: document.getElementById('emp-confirmar').value,
       Activo: 'true',
-      Alarma_Descanso: document.getElementById('emp-alarma').value,
     });
     if (res.ok) { toast('✅ Empleado guardado', 'ok'); await cargarEmpleados(); }
   } catch(err) { toast('❌ ' + err.message, 'error'); }
@@ -523,7 +423,7 @@ async function cargarUbicaciones() {
 
 async function cargarIncidencias() {
   const lista = await api('getIncidencias');
-  const cont  = document.getElementById('lista-incidencias');
+  const cont = document.getElementById('lista-incidencias');
   if (!lista.length) { cont.innerHTML='<div class="empty-state">Sin incidencias 🎉</div>'; return; }
   cont.innerHTML = lista.map(inc => `
     <div class="admin-card">
@@ -537,11 +437,7 @@ async function cargarIncidencias() {
     </div>`).join('');
 }
 
-async function resolverInc(id) {
-  await api('resolverIncidencia', { id });
-  toast('✅ Resuelta', 'ok');
-  await cargarIncidencias();
-}
+async function resolverInc(id) { await api('resolverIncidencia',{id}); toast('✅ Resuelta','ok'); await cargarIncidencias(); }
 
 function setupNavegacion() {
   document.getElementById('btn-menu').addEventListener('click', () => {
@@ -557,17 +453,9 @@ function setupNavegacion() {
 
 async function navegarA(view) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  const mapa = {
-    fichar:         'screen-fichar',
-    'mis-fichajes': 'screen-mis-fichajes',
-    dashboard:      'screen-dashboard',
-    empleados:      'screen-empleados',
-    ubicaciones:    'screen-ubicaciones',
-    incidencias:    'screen-incidencias'
-  };
+  const mapa = { fichar:'screen-fichar','mis-fichajes':'screen-mis-fichajes',dashboard:'screen-dashboard',empleados:'screen-empleados',ubicaciones:'screen-ubicaciones',incidencias:'screen-incidencias' };
   document.getElementById(mapa[view])?.classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(n =>
-    n.classList.toggle('active', n.dataset.view===view));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view===view));
   if (view==='dashboard')    await cargarDashboard();
   if (view==='mis-fichajes') await cargarMisFichajes();
   if (view==='incidencias')  await cargarIncidencias();
@@ -583,8 +471,7 @@ function cerrarSidebar() {
 function iniciarReloj() {
   const tick = () => {
     const now = new Date();
-    document.getElementById('clock-time').textContent =
-      String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    document.getElementById('clock-time').textContent = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
     document.getElementById('clock-date').textContent = formatearFecha(fechaHoy());
   };
   tick(); setInterval(tick, 1000);
@@ -592,28 +479,18 @@ function iniciarReloj() {
 
 function toast(msg, tipo='ok') {
   const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = 'toast show ' + tipo;
+  el.textContent = msg; el.className = 'toast show ' + tipo;
   setTimeout(() => el.className='toast hidden', 3200);
 }
 
 function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
-
-function horaActual() {
-  const n = new Date();
-  return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
-}
-
-function fechaHoy() {
-  const n = new Date();
-  return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
-}
+function horaActual() { const n=new Date(); return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); }
+function fechaHoy() { const n=new Date(); return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0'); }
 
 function formatearFecha(str) {
   if (!str) return '';
   const [y,m,d] = str.split('-');
-  const dias  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'], meses=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
   const f = new Date(parseInt(y),parseInt(m)-1,parseInt(d));
   return dias[f.getDay()]+' '+parseInt(d)+' '+meses[parseInt(m)-1];
 }
@@ -624,41 +501,24 @@ function calcularHorasDia(fichajes) {
   let mins = 0;
   for (let i=0; i<ord.length-1; i+=2) {
     if (ord[i].Tipo==='ENTRADA'&&ord[i+1]?.Tipo==='SALIDA') {
-      const [hE,mE]=ord[i].Hora.split(':').map(Number);
-      const [hS,mS]=ord[i+1].Hora.split(':').map(Number);
+      const [hE,mE]=ord[i].Hora.split(':').map(Number), [hS,mS]=ord[i+1].Hora.split(':').map(Number);
       mins += (hS*60+mS)-(hE*60+mE);
     }
   }
   if (mins<=0) return null;
   return Math.floor(mins/60)+'h'+(mins%60>0?' '+mins%60+'m':'');
 }
-
-function calcularHorasTrabajadas() {
-  return calcularHorasDia(state.estadoHoy?.fichajesHoy||[])||'0h';
-}
-
-function formatearFecha(str) {
-  if (!str) return '';
-  const [y,m,d] = str.split('-');
-  const dias  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-  const f = new Date(parseInt(y),parseInt(m)-1,parseInt(d));
-  return dias[f.getDay()]+' '+parseInt(d)+' '+meses[parseInt(m)-1];
-}
-
-function calcularHorasDia(fichajes) {
-  if (!fichajes||fichajes.length<2) return null;
-  const ord = [...fichajes].sort((a,b)=>a.Hora.localeCompare(b.Hora));
-  let mins = 0;
-  for (let i=0; i<ord.length-1; i+=2) {
-    if (ord[i].Tipo==='ENTRADA'&&ord[i+1]?.Tipo==='SALIDA') {
-      const [hE,mE]=ord[i].Hora.split(':').map(Number);
-      const [hS,mS]=ord[i+1].Hora.split(':').map(Number);
-      mins += (hS*60+mS)-(hE*60+mE);
-    }
-  }
-  if (mins<=0) return null;
-  return Math.floor(mins/60)+'h'+(mins%60>0?' '+mins%60+'m':'');
-}
-
 function calcularHorasTrabajadas() { return calcularHorasDia(state.estadoHoy?.fichajesHoy||[])||'0h'; }
+'''
+
+with open('/root/output/app.js', 'w', encoding='utf-8') as f:
+    f.write(app_js_final)
+
+print(f"app.js LIMPIO ✅ {len(app_js_final):,} chars")
+
+# Verificar que no hay duplicados
+funciones = ['ejecutarFichaje','formatearFecha','calcularHorasDia','calcularHorasTrabajadas','btn-fichar','btn-volver-fichar']
+for fn in funciones:
+    count = app_js_final.count(fn)
+    status = '✅' if count <= 2 else f'❌ DUPLICADO x{count}'
+    print(f"  {fn}: {count} ocurrencias {status}")
