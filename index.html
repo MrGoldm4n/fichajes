@@ -62,10 +62,12 @@
     <div class="fichar-count" id="fichar-count">0 fichajes hoy</div>
   </div>
   <div class="fichar-actions">
-    <button class="btn btn-fichar" id="btn-fichar">
-      <span class="btn-icon">👆</span>
-      <span id="btn-fichar-text">Registrar ENTRADA</span>
-    </button>
+  <button class="btn btn-fichar" id="btn-fichar">
+    <span class="btn-icon">👆</span>
+    <span id="btn-fichar-text">Fichar</span>
+  </button>
+  <div class="actions-secundarias">
+    <button class="btn btn-secondary hidden" id="btn-alarma">⏱ Activar alarma</button>
     <button class="btn btn-secondary" id="btn-manual">✏️ Fichaje manual</button>
   </div>
 </div>
@@ -149,10 +151,7 @@
       <div class="resumen-label">Tiempo trabajado hoy</div>
       <div class="resumen-valor" id="resumen-valor">0h</div>
     </div>
-    <div id="modal-tipo-salida" class="tipo-salida-opts hidden">
-      <button class="btn btn-descanso" id="btn-descanso">🍽️ Descanso</button>
-      <button class="btn btn-salida-ok" id="btn-salida-ok">✅ Salida definitiva</button>
-    </div>
+    
     <label class="field-label">Comentario (opcional)</label>
     <textarea id="modal-comentario" rows="2" placeholder="Añade una nota…" class="textarea-field"></textarea>
     <div class="modal-btns" id="modal-btns-std">
@@ -228,6 +227,8 @@
       <div><label class="field-label mt">Q3</label><input type="number" id="emp-q3" class="select-field" placeholder="0"/></div>
       <div><label class="field-label mt">Q4</label><input type="number" id="emp-q4" class="select-field" placeholder="0"/></div>
     </div>
+    <label class="field-label mt">Alarma descanso (minutos)</label>
+<input type="number" id="emp-alarma" class="select-field" value="25" min="1" max="120"/>
     <label class="field-label mt">Confirmar fichaje</label>
     <select id="emp-confirmar" class="select-field">
       <option value="true">Sí</option>
