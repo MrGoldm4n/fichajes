@@ -1,4 +1,4 @@
-// FICHAJES v0.5.0 — app.js (LIMPIO)
+// FICHAJES v0.5.0 — app.js
 const GOOGLE_CLIENT_ID = '920497100034-08on4kifjrp7l80doe6ucs49ahop5v8c.apps.googleusercontent.com';
 const tg = window.Telegram?.WebApp;
 const state = { empleado:null, ubicacion:null, estadoHoy:null, timerInterval:null, timerSeconds:0, empleados:[], ubicaciones:[], config:{} };
@@ -59,7 +59,7 @@ function mostrarLoginGoogle() {
 
 async function handleGoogleLogin(response) {
   const statusEl = document.getElementById('login-status');
-  statusEl.textContent = 'Verificando…'; statusEl.className = 'login-status';
+  statusEl.textContent = 'Verificando\u2026'; statusEl.className = 'login-status';
   try {
     const payload = JSON.parse(atob(response.credential.split('.')[1]));
     const res = await fetch(APPS_SCRIPT_URL, { method:'POST', redirect:'follow',
@@ -75,7 +75,7 @@ async function handleGoogleLogin(response) {
       statusEl.className = 'login-status login-error';
     }
   } catch(err) {
-    statusEl.textContent = 'Error de conexión: ' + err.message;
+    statusEl.textContent = 'Error de conexi\u00f3n: ' + err.message;
     statusEl.className = 'login-status login-error';
   }
 }
@@ -96,7 +96,7 @@ async function arrancarApp(yaAutenticado = false) {
     const locParam = tg?.initDataUnsafe?.start_param || urlParams.get('loc') || '';
     if (locParam) {
       state.ubicacion = state.ubicaciones.find(u => u.NFC_Param === locParam || u.ID_Ubicacion === locParam) || null;
-      if (state.ubicacion) document.getElementById('fichar-ubicacion').textContent = '📍 ' + state.ubicacion.Nombre;
+      if (state.ubicacion) document.getElementById('fichar-ubicacion').textContent = '\ud83d\udccd ' + state.ubicacion.Nombre;
     }
     await refreshEstado();
     if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
@@ -141,9 +141,9 @@ async function prepararFichaje(autoConfirm) {
   const tipo = state.estadoHoy?.proximoTipo || 'ENTRADA';
   const confirmar = state.empleado?.Confirmar_Fichaje !== 'false';
   if (!autoConfirm && confirmar) {
-    document.getElementById('modal-icon').textContent      = tipo==='ENTRADA' ? '🟢' : '🔴';
+    document.getElementById('modal-icon').textContent      = tipo==='ENTRADA' ? '\ud83d\udfe2' : '\ud83d\udd34';
     document.getElementById('modal-titulo').textContent    = 'Confirmar fichaje';
-    document.getElementById('modal-subtitulo').textContent = tipo + ' — ' + horaActual();
+    document.getElementById('modal-subtitulo').textContent = tipo + ' \u2014 ' + horaActual();
     document.getElementById('modal-resumen-horas').classList.add('hidden');
     document.getElementById('modal-btns-std').classList.remove('hidden');
     document.getElementById('modal-comentario').value = '';
@@ -155,7 +155,7 @@ async function prepararFichaje(autoConfirm) {
 
 async function ejecutarFichaje({ comentario }) {
   document.getElementById('modal-confirmar').classList.add('hidden');
-  toast('Registrando…');
+  toast('Registrando\u2026');
   try {
     tg?.HapticFeedback?.impactOccurred('medium');
     const res = await api('fichar', {
@@ -166,11 +166,11 @@ async function ejecutarFichaje({ comentario }) {
     });
     if (res.ok) {
       tg?.HapticFeedback?.notificationOccurred('success');
-      toast('✅ ' + res.tipo + ' a las ' + res.hora, 'ok');
+      toast('\u2705 ' + res.tipo + ' a las ' + res.hora, 'ok');
       await refreshEstado();
       if (res.fichajeNum % 2 === 0) iniciarTimerDescanso();
     }
-  } catch(err) { tg?.HapticFeedback?.notificationOccurred('error'); toast('❌ ' + err.message, 'error'); }
+  } catch(err) { tg?.HapticFeedback?.notificationOccurred('error'); toast('\u274c ' + err.message, 'error'); }
 }
 
 function setupModales() {
@@ -189,7 +189,7 @@ function setupModales() {
       wrap.classList.remove('hidden');
       if (!state.empleados.length) state.empleados = await api('getEmpleados');
       document.getElementById('manual-emp').innerHTML = state.empleados.map(e =>
-        `<option value="${e.Numero_Empleado}">${e.Nombre_Completo}</option>`).join('');
+        '<option value="' + e.Numero_Empleado + '">' + e.Nombre_Completo + '</option>').join('');
     } else { wrap.classList.add('hidden'); }
     document.getElementById('modal-manual').classList.remove('hidden');
   });
@@ -204,8 +204,8 @@ function setupModales() {
         ubicacionNombre: 'Manual', metodo: 'MANUAL',
         numEmpleadoManual: document.getElementById('manual-emp')?.value || '',
       });
-      if (res.ok) { toast('✅ Fichaje manual registrado', 'ok'); await refreshEstado(); }
-    } catch(err) { toast('❌ ' + err.message, 'error'); }
+      if (res.ok) { toast('\u2705 Fichaje manual registrado', 'ok'); await refreshEstado(); }
+    } catch(err) { toast('\u274c ' + err.message, 'error'); }
   });
 
   document.getElementById('btn-volver-fichar').addEventListener('click', () => {
@@ -230,7 +230,7 @@ function iniciarTimerDescanso() {
     state.timerSeconds--; actualizarTimerDisplay();
     if (state.timerSeconds <= 0) {
       clearInterval(state.timerInterval);
-      toast('⏰ Descanso completado. ¡Ficha de nuevo!', 'warning');
+      toast('\u23f0 Descanso completado. \u00a1Ficha de nuevo!', 'warning');
       tg?.HapticFeedback?.notificationOccurred('warning');
     }
   }, 1000);
@@ -248,7 +248,7 @@ async function cargarDashboard() {
   const sel = document.getElementById('dash-emp-select');
   if (state.empleado?.Rol === 'admin') {
     if (!state.empleados.length) state.empleados = await api('getEmpleados');
-    sel.innerHTML = state.empleados.map(e => `<option value="${e.Numero_Empleado}">${e.Nombre_Completo}</option>`).join('');
+    sel.innerHTML = state.empleados.map(e => '<option value="' + e.Numero_Empleado + '">' + e.Nombre_Completo + '</option>').join('');
     sel.value = state.empleado.Numero_Empleado;
     sel.classList.remove('hidden');
     sel.addEventListener('change', () => cargarResumen(sel.value, año));
@@ -280,7 +280,7 @@ function renderTrimestres(resumen, año) {
     const cls = i===trimActual?'activo':i<trimActual?'completado':'';
     const ini = i*3+1, fin = i*3+3;
     const hTrim = (resumen.detalleDias||[]).filter(d=>{ const m=parseInt(d.fecha.split('-')[1]); return m>=ini&&m<=fin; }).reduce((a,b)=>a+b.horas,0);
-    return `<div class="trim-card ${cls}"><div class="trim-label">${t} · ${año}</div><div class="trim-horas">${hTrim.toFixed(1)}h</div><div class="trim-obj">${obj?'Obj: '+obj+'h':'—'}</div></div>`;
+    return '<div class="trim-card ' + cls + '"><div class="trim-label">' + t + ' \u00b7 ' + año + '</div><div class="trim-horas">' + hTrim.toFixed(1) + 'h</div><div class="trim-obj">' + (obj?'Obj: '+obj+'h':'\u2014') + '</div></div>';
   }).join('');
 }
 
@@ -299,13 +299,13 @@ function renderCalendario(mesStr, detalleDias) {
   const primerDia = new Date(año,mes-1,1).getDay();
   const offset = primerDia===0?6:primerDia-1;
   const diasMes = new Date(año,mes,0).getDate(); const hoy = fechaHoy();
-  let html = ['L','M','X','J','V','S','D'].map(d=>`<div class="cal-day-header">${d}</div>`).join('');
+  let html = ['L','M','X','J','V','S','D'].map(d=>'<div class="cal-day-header">'+d+'</div>').join('');
   for (let i=0; i<offset; i++) html += '<div class="cal-day vacio"></div>';
   for (let d=1; d<=diasMes; d++) {
     const fStr = año+'-'+String(mes).padStart(2,'0')+'-'+String(d).padStart(2,'0');
     const dia = porDia[fStr]; const esFin = [0,6].includes(new Date(año,mes-1,d).getDay());
     const cls = fStr===hoy?'hoy':dia?'ok':esFin?'vacio':'';
-    html += `<div class="cal-day ${cls}"><span>${d}</span>${dia?'<span class="cal-horas">'+dia.horas.toFixed(1)+'h</span>':''}</div>`;
+    html += '<div class="cal-day ' + cls + '"><span>' + d + '</span>' + (dia?'<span class="cal-horas">'+dia.horas.toFixed(1)+'h</span>':'') + '</div>';
   }
   document.getElementById('calendario-grid').innerHTML = html;
 }
@@ -318,7 +318,7 @@ function renderSemana(detalleDias) {
     const fStr = f.toISOString().split('T')[0];
     const h = (detalleDias||[]).find(x=>x.fecha===fStr)?.horas||0;
     const pct = Math.min((h/10)*100,100);
-    return `<div class="semana-bar-wrap"><div class="semana-bar" style="height:${pct}%"></div><span class="semana-day-label">${d}</span></div>`;
+    return '<div class="semana-bar-wrap"><div class="semana-bar" style="height:'+pct+'%"></div><span class="semana-day-label">'+d+'</span></div>';
   }).join('');
 }
 
@@ -337,32 +337,27 @@ async function renderFichajesMes(mesStr) {
   if (!Object.keys(porDia).length) { cont.innerHTML = '<div class="empty-state">Sin fichajes en este periodo</div>'; return; }
   cont.innerHTML = Object.entries(porDia).sort(([a],[b])=>b.localeCompare(a)).map(([fecha,filas]) => {
     const hTrab = calcularHorasDia(filas);
-    return `<div class="dia-grupo"><div class="dia-titulo">${formatearFecha(fecha)}${hTrab?' · '+hTrab:''}</div>
-      ${filas.sort((a,b)=>a.Hora.localeCompare(b.Hora)).map(f=>`
-        <div class="fichaje-row">
-          <div class="fich-tipo ${f.Tipo.toLowerCase()}">${f.Tipo==='ENTRADA'?'🟢':'🔴'}</div>
-          <div class="fich-hora">${f.Hora.slice(0,5)}</div>
-          <div class="fich-detalle">
-            <div class="fich-ubi">${f.Ubicacion_Nombre||'—'}</div>
-            ${f.Comentario?`<div class="fich-coment">"${f.Comentario}"</div>`:''}
-          </div>
-          <span class="fich-metodo">${f.Metodo}</span>
-        </div>`).join('')}
-    </div>`;
+    return '<div class="dia-grupo"><div class="dia-titulo">' + formatearFecha(fecha) + (hTrab?' \u00b7 '+hTrab:'') + '</div>' +
+      filas.sort((a,b)=>a.Hora.localeCompare(b.Hora)).map(f=>
+        '<div class="fichaje-row">' +
+        '<div class="fich-tipo ' + f.Tipo.toLowerCase() + '">' + (f.Tipo==='ENTRADA'?'\ud83d\udfe2':'\ud83d\udd34') + '</div>' +
+        '<div class="fich-hora">' + f.Hora.slice(0,5) + '</div>' +
+        '<div class="fich-detalle"><div class="fich-ubi">' + (f.Ubicacion_Nombre||'\u2014') + '</div>' +
+        (f.Comentario?'<div class="fich-coment">"'+f.Comentario+'"</div>':'') +
+        '</div><span class="fich-metodo">' + f.Metodo + '</span></div>'
+      ).join('') + '</div>';
   }).join('');
 }
 
 async function cargarEmpleados() {
   state.empleados = await api('getEmpleados');
-  document.getElementById('lista-empleados').innerHTML = state.empleados.map(e => `
-    <div class="admin-card">
-      <div class="admin-card-info">
-        <div class="admin-card-name">${e.Nombre_Completo}</div>
-        <div class="admin-card-sub">${e.Numero_Empleado} · ${e.Rol} · ${e.Activo==='true'?'✅ Activo':'🔴 Baja'}</div>
-        <div class="admin-card-sub">TG: ${e.Telegram_ID||'—'} · Email: ${e.Email||'—'}</div>
-      </div>
-      <button class="btn btn-sm btn-ghost" onclick="abrirFormEmpleado('${e.ID_Empleado}')">✏️</button>
-    </div>`).join('');
+  document.getElementById('lista-empleados').innerHTML = state.empleados.map(e =>
+    '<div class="admin-card"><div class="admin-card-info">' +
+    '<div class="admin-card-name">' + e.Nombre_Completo + '</div>' +
+    '<div class="admin-card-sub">' + e.Numero_Empleado + ' \u00b7 ' + e.Rol + ' \u00b7 ' + (e.Activo==='true'?'\u2705 Activo':'\ud83d\udd34 Baja') + '</div>' +
+    '<div class="admin-card-sub">TG: ' + (e.Telegram_ID||'\u2014') + ' \u00b7 Email: ' + (e.Email||'\u2014') + '</div>' +
+    '</div><button class="btn btn-sm btn-ghost" onclick="abrirFormEmpleado(\'' + e.ID_Empleado + '\')">\u270f\ufe0f</button></div>'
+  ).join('');
 }
 
 function abrirFormEmpleado(id) {
@@ -405,39 +400,39 @@ async function guardarEmpleadoForm() {
       Confirmar_Fichaje: document.getElementById('emp-confirmar').value,
       Activo: 'true',
     });
-    if (res.ok) { toast('✅ Empleado guardado', 'ok'); await cargarEmpleados(); }
-  } catch(err) { toast('❌ ' + err.message, 'error'); }
+    if (res.ok) { toast('\u2705 Empleado guardado', 'ok'); await cargarEmpleados(); }
+  } catch(err) { toast('\u274c ' + err.message, 'error'); }
 }
 
 async function cargarUbicaciones() {
   state.ubicaciones = await api('getUbicaciones');
-  document.getElementById('lista-ubicaciones').innerHTML = state.ubicaciones.map(u => `
-    <div class="admin-card">
-      <div class="admin-card-info">
-        <div class="admin-card-name">${u.Nombre}</div>
-        <div class="admin-card-sub">ID: ${u.ID_Ubicacion} · NFC: ${u.NFC_Param}</div>
-        <div class="admin-card-sub nfc-url">🔗 ${APPS_SCRIPT_URL}?loc=${u.NFC_Param}</div>
-      </div>
-    </div>`).join('');
+  document.getElementById('lista-ubicaciones').innerHTML = state.ubicaciones.map(u =>
+    '<div class="admin-card"><div class="admin-card-info">' +
+    '<div class="admin-card-name">' + u.Nombre + '</div>' +
+    '<div class="admin-card-sub">ID: ' + u.ID_Ubicacion + ' \u00b7 NFC: ' + u.NFC_Param + '</div>' +
+    '<div class="admin-card-sub nfc-url">\ud83d\udd17 ' + APPS_SCRIPT_URL + '?loc=' + u.NFC_Param + '</div>' +
+    '</div></div>'
+  ).join('');
 }
 
 async function cargarIncidencias() {
   const lista = await api('getIncidencias');
   const cont = document.getElementById('lista-incidencias');
-  if (!lista.length) { cont.innerHTML='<div class="empty-state">Sin incidencias 🎉</div>'; return; }
-  cont.innerHTML = lista.map(inc => `
-    <div class="admin-card">
-      <div class="admin-card-info">
-        <div class="admin-card-name">${inc.Empleado_Nombre}</div>
-        <div class="admin-card-sub">${inc.Fecha} — ${inc.Descripcion}</div>
-        <span class="badge ${inc.Estado==='PENDIENTE'?'badge-error':'badge-ok'}">${inc.Estado}</span>
-      </div>
-      ${inc.Estado==='PENDIENTE'&&state.empleado?.Rol==='admin'
-        ?`<button class="btn btn-sm btn-primary" onclick="resolverInc('${inc.ID}')">✔ Resolver</button>`:''}
-    </div>`).join('');
+  if (!lista.length) { cont.innerHTML='<div class="empty-state">Sin incidencias \ud83c\udf89</div>'; return; }
+  cont.innerHTML = lista.map(inc =>
+    '<div class="admin-card"><div class="admin-card-info">' +
+    '<div class="admin-card-name">' + inc.Empleado_Nombre + '</div>' +
+    '<div class="admin-card-sub">' + inc.Fecha + ' \u2014 ' + inc.Descripcion + '</div>' +
+    '<span class="badge ' + (inc.Estado==='PENDIENTE'?'badge-error':'badge-ok') + '">' + inc.Estado + '</span>' +
+    '</div>' +
+    (inc.Estado==='PENDIENTE'&&state.empleado?.Rol==='admin'
+      ? '<button class="btn btn-sm btn-primary" onclick="resolverInc(\'' + inc.ID + '\')">\u2714 Resolver</button>'
+      : '') +
+    '</div>'
+  ).join('');
 }
 
-async function resolverInc(id) { await api('resolverIncidencia',{id}); toast('✅ Resuelta','ok'); await cargarIncidencias(); }
+async function resolverInc(id) { await api('resolverIncidencia',{id}); toast('\u2705 Resuelta','ok'); await cargarIncidencias(); }
 
 function setupNavegacion() {
   document.getElementById('btn-menu').addEventListener('click', () => {
@@ -490,7 +485,8 @@ function fechaHoy() { const n=new Date(); return n.getFullYear()+'-'+String(n.ge
 function formatearFecha(str) {
   if (!str) return '';
   const [y,m,d] = str.split('-');
-  const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'], meses=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const dias=['\u0044\u006f\u006d','\u004c\u0075\u006e','\u004d\u0061\u0072','\u004d\u0069\u00e9','\u004a\u0075\u0065','\u0056\u0069\u0065','\u0053\u00e1\u0062'];
+  const meses=['\u0065\u006e\u0065','\u0066\u0065\u0062','\u006d\u0061\u0072','\u0061\u0062\u0072','\u006d\u0061\u0079','\u006a\u0075\u006e','\u006a\u0075\u006c','\u0061\u0067\u006f','\u0073\u0065\u0070','\u006f\u0063\u0074','\u006e\u006f\u0076','\u0064\u0069\u0063'];
   const f = new Date(parseInt(y),parseInt(m)-1,parseInt(d));
   return dias[f.getDay()]+' '+parseInt(d)+' '+meses[parseInt(m)-1];
 }
@@ -508,17 +504,26 @@ function calcularHorasDia(fichajes) {
   if (mins<=0) return null;
   return Math.floor(mins/60)+'h'+(mins%60>0?' '+mins%60+'m':'');
 }
+
 function calcularHorasTrabajadas() { return calcularHorasDia(state.estadoHoy?.fichajesHoy||[])||'0h'; }
-'''
+"""
 
 with open('/root/output/app.js', 'w', encoding='utf-8') as f:
-    f.write(app_js_final)
+    f.write(app_js)
 
-print(f"app.js LIMPIO ✅ {len(app_js_final):,} chars")
+# Verificar que no hay tokens Python ni syntax errors JS
+checks = [
+    ("Sin triples comillas Python",     "'''" not in app_js and '"""' not in app_js),
+    ("Sin 'with open'",                 "with open(" not in app_js),
+    ("Sin backticks de template",       app_js.count('`') == 0),
+    ("Todas funciones definidas",       all(fn in app_js for fn in ['ejecutarFichaje','arrancarApp','refreshEstado','setupModales','iniciarReloj','formatearFecha','calcularHorasDia'])),
+    ("APPS_SCRIPT_URL referenciada",    'APPS_SCRIPT_URL' in app_js),
+    ("Sin duplicados de funciones clave", app_js.count('function ejecutarFichaje') == 1),
+]
 
-# Verificar que no hay duplicados
-funciones = ['ejecutarFichaje','formatearFecha','calcularHorasDia','calcularHorasTrabajadas','btn-fichar','btn-volver-fichar']
-for fn in funciones:
-    count = app_js_final.count(fn)
-    status = '✅' if count <= 2 else f'❌ DUPLICADO x{count}'
-    print(f"  {fn}: {count} ocurrencias {status}")
+all_ok = True
+for desc, ok in checks:
+    if not ok: all_ok = False
+    print(f"  {'OK' if ok else 'XX'} {desc}")
+
+print(f"\napp.js LISTO {len(app_js):,} bytes" if all_ok else "\nRevisar puntos marcados")
