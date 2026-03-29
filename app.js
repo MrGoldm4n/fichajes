@@ -137,21 +137,65 @@ function actualizarUIFichaje() {
   const s = state.estadoHoy; if (!s) return;
   const esSalida = s.proximoTipo === 'SALIDA';
   const badge = document.getElementById('tipo-badge');
-  badge.textContent = s.proximoTipo; badge.className = 'tipo-badge' + (esSalida ? ' salida' : '');
+  badge.textContent = s.proximoTipo;
+  badge.className   = 'tipo-badge' + (esSalida ? ' salida' : '');
   const btn = document.getElementById('btn-fichar');
   btn.className = 'btn btn-fichar' + (esSalida ? ' salida' : '');
-  document.getElementById('btn-fichar-text').textContent = 'Registrar ' + s.proximoTipo;
-  document.getElementById('fichar-count').textContent = s.totalFichajesHoy + ' fichaje' + (s.totalFichajesHoy!==1?'s':'') + ' hoy';
+  document.getElementById('btn-fichar-text').textContent =
+    'Fichar ' + s.proximoTipo;
+  document.getElementById('fichar-count').textContent =
+    s.totalFichajesHoy + ' fichaje' + (s.totalFichajesHoy !== 1 ? 's' : '') + ' hoy';
+
+  // Mostrar botón alarma si hay al menos 1 fichaje hoy
+  const btnAlarma = document.getElementById('btn-alarma');
+  if (s.totalFichajesHoy >= 1) btnAlarma.classList.remove('hidden');
+  else btnAlarma.classList.add('hidden');
 }
+
 
 async function prepararFichaje(autoConfirm) {
   await refreshEstado();
-  const tipo = state.estadoHoy?.proximoTipo || 'ENTRADA';
+  const tipo     = state.estadoHoy?.proximoTipo || 'ENTRADA';
   const confirmar = state.empleado?.Confirmar_Fichaje !== 'false';
-  if (tipo === 'SALIDA') mostrarModalSalida();
-  else if (!autoConfirm && confirmar) mostrarModalConfirmar(tipo);
-  else await ejecutarFichaje({ tipo, esDescanso: false, comentario: '' });
+
+  if (!autoConfirm && confirmar) {
+    // Modal simple con cancelar
+    document.getElementById('modal-icon').textContent      = tipo === 'ENTRADA' ? '🟢' : '🔴';
+    document.getElementById('modal-titulo').textContent    = 'Confirmar fichaje';
+    document.getElementById('modal-subtitulo').textContent = tipo + ' — ' + horaActual();
+    document.getElementById('modal-resumen-horas').classList.add('hidden');
+    document.getElementById('modal-btns-std').classList.remove('hidden');
+    document.getElementById('modal-comentario').value = '';
+    document.getElementById('modal-confirmar').classList.remove('hidden');
+  } else {
+    await ejecutarFichaje({ comentario: '' });
+  }
 }
+
+async function ejecutarFichaje({ comentario }) {
+  document.getElementById('modal-confirmar').classList.add('hidden');
+  toast('Registrando…');
+  try {
+    tg?.HapticFeedback?.impactOccurred('medium');
+    const res = await api('fichar', {
+      comentario,
+      ubicacionId:     state.ubicacion?.ID_Ubicacion || '',
+      ubicacionNombre: state.ubicacion?.Nombre || 'Manual',
+      metodo:          state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user ? 'MINI_APP' : 'WEB'),
+    });
+    if (res.ok) {
+      tg?.HapticFeedback?.notificationOccurred('success');
+      toast('✅ ' + res.tipo + ' a las ' + res.hora, 'ok');
+      await refreshEstado();
+      // Alarma automática en fichaje par (primera salida = número 2, 4, 6...)
+      if (res.fichajeNum % 2 === 0) iniciarTimerDescanso();
+    }
+  } catch(err) {
+    tg?.HapticFeedback?.notificationOccurred('error');
+    toast('❌ ' + err.message, 'error');
+  }
+}
+
 
 function mostrarModalConfirmar(tipo) {
   document.getElementById('modal-icon').textContent      = tipo==='ENTRADA' ? '🟢' : '🔴';
@@ -199,9 +243,33 @@ async function ejecutarFichaje({ tipo, esDescanso, comentario }) {
 function setupModales() {
   document.getElementById('btn-fichar').addEventListener('click', () => prepararFichaje(false));
   document.getElementById('modal-cancel').addEventListener('click', () => document.getElementById('modal-confirmar').classList.add('hidden'));
-  document.getElementById('modal-confirm').addEventListener('click', async () => {
-    await ejecutarFichaje({ tipo: state.estadoHoy?.proximoTipo || 'ENTRADA', esDescanso: false, comentario: document.getElementById('modal-comentario').value.trim() });
-  });
+  // Botón principal fichar
+document.getElementById('btn-fichar').addEventListener('click', () => prepararFichaje(false));
+
+// Modal confirmar — cancelar
+document.getElementById('modal-cancel').addEventListener('click', () =>
+  document.getElementById('modal-confirmar').classList.add('hidden'));
+
+// Modal confirmar — confirmar
+document.getElementById('modal-confirm').addEventListener('click', async () =>
+  ejecutarFichaje({ comentario: document.getElementById('modal-comentario').value.trim() }));
+
+// Botón alarma manual
+document.getElementById('btn-alarma').addEventListener('click', () => iniciarTimerDescanso());
+
+// Timer — ya estoy de vuelta → registra fichaje directo
+document.getElementById('btn-volver-fichar').addEventListener('click', () => {
+  clearInterval(state.timerInterval);
+  document.getElementById('modal-alarma').classList.add('hidden');
+  prepararFichaje(false);
+});
+
+// Timer — cancelar alarma
+document.getElementById('btn-cancelar-timer').addEventListener('click', () => {
+  clearInterval(state.timerInterval);
+  document.getElementById('modal-alarma').classList.add('hidden');
+});
+
   document.getElementById('btn-descanso').addEventListener('click', async () =>
     ejecutarFichaje({ tipo: 'SALIDA', esDescanso: true, comentario: document.getElementById('modal-comentario').value.trim() }));
   document.getElementById('btn-salida-ok').addEventListener('click', async () =>
@@ -250,15 +318,22 @@ function setupModales() {
 }
 
 function iniciarTimerDescanso() {
-  const mins = parseInt(state.config?.ALARMA_DESCANSO || '25');
+  const mins = parseInt(state.empleado?.Alarma_Descanso || state.config?.ALARMA_DESCANSO || '25');
   state.timerSeconds = mins * 60;
   document.getElementById('modal-alarma').classList.remove('hidden');
   actualizarTimerDisplay();
+  clearInterval(state.timerInterval);
   state.timerInterval = setInterval(() => {
-    state.timerSeconds--; actualizarTimerDisplay();
-    if (state.timerSeconds <= 0) { clearInterval(state.timerInterval); toast('⏰ Descanso completado. ¡Vuelve a fichar!', 'warning'); tg?.HapticFeedback?.notificationOccurred('warning'); }
+    state.timerSeconds--;
+    actualizarTimerDisplay();
+    if (state.timerSeconds <= 0) {
+      clearInterval(state.timerInterval);
+      toast('⏰ Descanso completado. ¡Ficha de nuevo!', 'warning');
+      tg?.HapticFeedback?.notificationOccurred('warning');
+    }
   }, 1000);
 }
+
 
 function actualizarTimerDisplay() {
   const m = String(Math.floor(state.timerSeconds/60)).padStart(2,'0');
@@ -406,6 +481,8 @@ function abrirFormEmpleado(id) {
   document.getElementById('emp-q4').value        = emp?.Q4||'';
   document.getElementById('emp-confirmar').value = emp?.Confirmar_Fichaje||'true';
   document.getElementById('modal-empleado').classList.remove('hidden');
+  document.getElementById('emp-alarma').value = emp?.Alarma_Descanso || '25';
+
 }
 
 async function guardarEmpleadoForm() {
@@ -426,6 +503,7 @@ async function guardarEmpleadoForm() {
       Q4: document.getElementById('emp-q4').value,
       Confirmar_Fichaje: document.getElementById('emp-confirmar').value,
       Activo: 'true',
+      Alarma_Descanso: document.getElementById('emp-alarma').value,
     });
     if (res.ok) { toast('✅ Empleado guardado', 'ok'); await cargarEmpleados(); }
   } catch(err) { toast('❌ ' + err.message, 'error'); }
