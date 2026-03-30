@@ -221,7 +221,7 @@ function calcularHorasDia(fichajes) {
 }
 
 window.api = api;
-'''
+
 Path('/root/output/app.js').write_text(app_js, encoding='utf-8')
 print('app.js limpio generado:', len(app_js))
 print('Últimos 120 caracteres:', app_js[-120:])
