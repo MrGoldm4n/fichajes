@@ -4,6 +4,10 @@
   <script src="https://accounts.google.com/gsi/client" async></script>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+  <meta name="theme-color" content="#0d0d1a"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="Fichajes"/>
   <title>Fichajes</title>
   <link rel="manifest" href="manifest.json"/>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -11,6 +15,7 @@
 </head>
 <body>
 
+<!-- SPLASH -->
 <div id="splash" class="screen active">
   <div class="splash-inner">
     <div class="logo-icon">⏱</div>
@@ -19,6 +24,7 @@
   </div>
 </div>
 
+<!-- LOGIN GOOGLE -->
 <div id="screen-login" class="screen">
   <div class="login-container">
     <div class="login-logo">⏱</div>
@@ -29,6 +35,7 @@
   </div>
 </div>
 
+<!-- NO AUTH -->
 <div id="screen-noauth" class="screen">
   <div class="noauth-inner">
     <div class="noauth-icon">🔒</div>
@@ -39,6 +46,7 @@
   </div>
 </div>
 
+<!-- FICHAR -->
 <div id="screen-fichar" class="screen">
   <div class="top-bar">
     <div class="top-user">
@@ -63,15 +71,16 @@
   <div class="fichar-actions">
     <button class="btn btn-fichar" id="btn-fichar">
       <span class="btn-icon">👆</span>
-      <span id="btn-fichar-text">Fichar</span>
+      <span id="btn-fichar-text">Registrar ENTRADA</span>
     </button>
     <div class="actions-secundarias">
-      <button class="btn btn-secondary hidden" id="btn-alarma">⏱ Alarma</button>
-      <button class="btn btn-secondary" id="btn-manual">✏️ Fichaje manual</button>
+      <button class="btn btn-secondary" id="btn-alarma">⏱ Alarma</button>
+      <button class="btn btn-secondary" id="btn-manual">✏️ Manual</button>
     </div>
   </div>
 </div>
 
+<!-- MIS FICHAJES -->
 <div id="screen-mis-fichajes" class="screen">
   <div class="screen-header with-back">
     <button class="back-btn" data-back="fichar">‹</button>
@@ -85,6 +94,7 @@
   </div>
 </div>
 
+<!-- DASHBOARD -->
 <div id="screen-dashboard" class="screen">
   <div class="screen-header with-back">
     <button class="back-btn" data-back="fichar">‹</button>
@@ -116,6 +126,7 @@
   </div>
 </div>
 
+<!-- EMPLEADOS (admin) -->
 <div id="screen-empleados" class="screen admin-only hidden">
   <div class="screen-header with-back">
     <button class="back-btn" data-back="fichar">‹</button>
@@ -125,6 +136,7 @@
   <div id="lista-empleados" class="lista-admin"></div>
 </div>
 
+<!-- UBICACIONES (admin) -->
 <div id="screen-ubicaciones" class="screen admin-only hidden">
   <div class="screen-header with-back">
     <button class="back-btn" data-back="fichar">‹</button>
@@ -134,6 +146,7 @@
   <div id="lista-ubicaciones" class="lista-admin"></div>
 </div>
 
+<!-- INCIDENCIAS -->
 <div id="screen-incidencias" class="screen">
   <div class="screen-header with-back">
     <button class="back-btn" data-back="fichar">‹</button>
@@ -142,7 +155,9 @@
   <div id="lista-incidencias" class="lista-admin"></div>
 </div>
 
-<!-- MODAL CONFIRMAR FICHAJE -->
+<!-- ── MODALES ─────────────────────────────────────────────────── -->
+
+<!-- CONFIRMAR FICHAJE -->
 <div id="modal-confirmar" class="modal-overlay hidden">
   <div class="modal-card">
     <div class="modal-icon" id="modal-icon">✅</div>
@@ -154,14 +169,14 @@
     </div>
     <label class="field-label">Comentario (opcional)</label>
     <textarea id="modal-comentario" rows="2" placeholder="Añade una nota…" class="textarea-field"></textarea>
-    <div class="modal-btns" id="modal-btns-std">
+    <div class="modal-btns">
       <button class="btn btn-ghost" id="modal-cancel">Cancelar</button>
       <button class="btn btn-primary" id="modal-confirm">Confirmar</button>
     </div>
   </div>
 </div>
 
-<!-- MODAL FICHAJE MANUAL (sin selector de tipo, se calcula automático) -->
+<!-- FICHAJE MANUAL -->
 <div id="modal-manual" class="modal-overlay hidden">
   <div class="modal-card">
     <h3>Fichaje Manual</h3>
@@ -182,13 +197,58 @@
   </div>
 </div>
 
-<!-- MODAL TIMER DESCANSO -->
+<!-- MODAL ALARMA — contenido dinámico según iOS/Android -->
 <div id="modal-alarma" class="modal-overlay hidden">
   <div class="modal-card center">
     <div class="timer-display" id="timer-display">25:00</div>
-    <p class="timer-label">Tiempo de descanso</p>
-    <button class="btn btn-primary mt" id="btn-volver-fichar">Ya estoy de vuelta</button>
-    <button class="btn btn-ghost" id="btn-cancelar-timer">Cancelar alarma</button>
+    <p class="timer-label" id="timer-label">Tiempo de descanso</p>
+
+    <!-- Bloque Android: timer interno -->
+    <div id="alarma-android" class="alarma-bloque">
+      <button class="btn btn-primary mt" id="btn-volver-fichar">✅ Ya estoy de vuelta</button>
+      <button class="btn btn-ghost" id="btn-cancelar-timer">Cancelar alarma</button>
+    </div>
+
+    <!-- Bloque iOS: Siri Shortcuts -->
+    <div id="alarma-ios" class="alarma-bloque hidden">
+      <button class="btn btn-siri mt" id="btn-siri">
+        <span>🍎</span> Activar con Siri
+      </button>
+      <button class="btn btn-primary" id="btn-volver-fichar-ios">✅ Ya estoy de vuelta</button>
+      <button class="btn btn-ghost" id="btn-cancelar-timer-ios">Cancelar alarma</button>
+      <button class="btn-link" id="btn-como-instalar">¿Cómo instalar el atajo?</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL INSTRUCCIONES ATAJO SIRI -->
+<div id="modal-siri-instrucciones" class="modal-overlay hidden">
+  <div class="modal-card">
+    <h3>📲 Instalar atajo de Siri</h3>
+    <p class="modal-sub">Solo necesitas hacerlo una vez. El atajo crea una alarma nativa en tu iPhone.</p>
+    <div class="instrucciones-lista">
+      <div class="instruccion-paso">
+        <span class="paso-num">1</span>
+        <span>Abre la app <strong>Atajos</strong> en tu iPhone</span>
+      </div>
+      <div class="instruccion-paso">
+        <span class="paso-num">2</span>
+        <span>Pulsa <strong>+</strong> para crear un atajo nuevo</span>
+      </div>
+      <div class="instruccion-paso">
+        <span class="paso-num">3</span>
+        <span>Añade la acción <strong>"Crear alarma"</strong> y activa <strong>"Mostrar cuando se ejecute"</strong></span>
+      </div>
+      <div class="instruccion-paso">
+        <span class="paso-num">4</span>
+        <span>Nómbralo exactamente: <strong class="highlight">Alarma Fichajes</strong></span>
+      </div>
+      <div class="instruccion-paso">
+        <span class="paso-num">5</span>
+        <span>Guarda. ¡Listo! La próxima vez que actives la alarma desde aquí, se creará automáticamente.</span>
+      </div>
+    </div>
+    <button class="btn btn-primary mt" id="btn-cerrar-instrucciones">Entendido</button>
   </div>
 </div>
 
@@ -264,28 +324,4 @@
 <script>const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyeGaphv3nWp855eNqM2s4WYdpNlmNKhpKmMiwyHdVhcAYKrTAMAPKMm8c-M9rDHC1d/exec';</script>
 <script src="app.js"></script>
 </body>
-</html>"""
-
-with open('/root/output/index.html', 'w', encoding='utf-8') as f:
-    f.write(html)
-
-# Verificaciones
-checks = {
-    'screen-fichar cierre correcto (</div>\n\n<div id="screen-mis')': '</div>\n\n<div id="screen-mis-fichajes"' in html,
-    'modal-tipo-salida eliminado':                                    'modal-tipo-salida' not in html,
-    'manual-tipo select eliminado':                                   'id="manual-tipo"' not in html,
-    'emp-alarma presente':                                            'id="emp-alarma"' in html,
-    'btn-alarma presente':                                            'id="btn-alarma"' in html,
-    'actions-secundarias presente':                                   'actions-secundarias' in html,
-    'btn-descanso eliminado':                                         'btn-descanso' not in html,
-    'btn-salida-ok eliminado':                                        'btn-salida-ok' not in html,
-    'APPS_SCRIPT_URL correcto (URL real del usuario)':                'AKfycbxeQMPa' in html,
-}
-
-all_ok = True
-for desc, ok in checks.items():
-    if not ok: all_ok = False
-    print(f"  {'✅' if ok else '❌'} {desc}")
-
-print()
-print(f"✅ index.html LISTO ({len(html):,} bytes)" if all_ok else "❌ Revisar los puntos marcados")
+</html>
