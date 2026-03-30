@@ -467,9 +467,13 @@ function actualizarTimerDisplay() {
 // ── SIRI SHORTCUTS ────────────────────────────────────────────────
 function lanzarAtajoSiri() {
   const mins = parseInt(state.empleado?.Alarma_Descanso || '25', 10);
-  // Lanza el atajo "Alarma Fichajes" con los minutos como input
   const url = 'shortcuts://run-shortcut?name=Alarma%20Fichajes&input=' + mins;
-  window.location.href = url;
+  // tg.openLink permite esquemas externos desde el webview de Telegram iOS
+  if (tg && tg.openLink) {
+    tg.openLink(url);
+  } else {
+    window.open(url, '_blank');
+  }
 }
 
 // ── MIS FICHAJES ──────────────────────────────────────────────────
