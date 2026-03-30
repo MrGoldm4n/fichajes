@@ -6,7 +6,8 @@ const state = {
   empleado: null, ubicacion: null, estadoHoy: null,
   timerInterval: null, timerSeconds: 0, alarmaActiva: false,
   empleados: [], ubicaciones: [], config: {},
-  wakeLock: null, alarmaSoundInterval: null
+  wakeLock: null, alarmaSoundInterval: null,
+  colaOffline: [] // fichajes pendientes de sincronizar
 };
 
 // ── AUDIO (con fix iOS) ───────────────────────────────────────────
@@ -142,6 +143,11 @@ window.addEventListener('load', async () => {
   document.addEventListener('touchstart', desbloquearAudio, { once: true });
   document.addEventListener('click',      desbloquearAudio, { once: true });
 
+  // Registrar Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
+  }
+
   try {
     if (tg) {
       tg.ready(); tg.expand();
@@ -150,7 +156,6 @@ window.addEventListener('load', async () => {
       ajustarAlturaViewport();
       tg.onEvent('viewportChanged', ajustarAlturaViewport);
     }
-    await sleep(700);
 
     if (tg?.initDataUnsafe?.user?.id) { await arrancarApp(); return; }
 
@@ -208,11 +213,36 @@ async function handleGoogleLogin(response) {
 
 // ── ARRANCAR APP ──────────────────────────────────────────────────
 async function arrancarApp(yaAutenticado = false) {
-  if (!yaAutenticado) state.empleado = await api('getEmpleado');
+  // Cargar cola offline guardada
+  cargarColaOffline();
+
+  // Mostrar pantalla de fichar inmediatamente con datos cacheados si los hay
+  const empCacheado = state.empleado;
+  if (empCacheado) {
+    actualizarUIEmpleado(empCacheado);
+    ocultarPantallas();
+    document.getElementById('screen-fichar')?.classList.add('active');
+    setupOnce();
+    iniciarReloj();
+    setupNavegacion();
+    if (empCacheado.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+    if (tg) ajustarAlturaViewport();
+  }
+
+  // Cargar datos en paralelo (más rápido que en secuencia)
+  try {
+    const promesas = [api('getUbicaciones'), api('getConfig')];
+    if (!yaAutenticado) promesas.unshift(api('getEmpleado'));
+    const resultados = await Promise.all(promesas);
+    if (!yaAutenticado) { state.empleado = resultados.shift(); }
+    state.ubicaciones = resultados[0] || [];
+    state.config      = resultados[1] || {};
+  } catch(err) {
+    // Si falla la red, continuar con datos cacheados
+    console.warn('Carga con datos cacheados:', err.message);
+  }
+
   const emp = state.empleado;
-  const [ubicaciones, config] = await Promise.all([api('getUbicaciones'), api('getConfig')]);
-  state.ubicaciones = ubicaciones || [];
-  state.config      = config || {};
   actualizarUIEmpleado(emp);
 
   const locParam = tg?.initDataUnsafe?.start_param || new URLSearchParams(location.search).get('loc') || '';
@@ -225,13 +255,21 @@ async function arrancarApp(yaAutenticado = false) {
   }
 
   await refreshEstado();
-  ocultarPantallas();
-  document.getElementById('screen-fichar')?.classList.add('active');
-  setupOnce();
-  iniciarReloj();
-  setupNavegacion();
-  if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
-  if (tg) ajustarAlturaViewport();
+  // Solo hacer setup si no se hizo ya con datos cacheados
+  if (!empCacheado) {
+    ocultarPantallas();
+    document.getElementById('screen-fichar')?.classList.add('active');
+    setupOnce();
+    iniciarReloj();
+    setupNavegacion();
+    if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+    if (tg) ajustarAlturaViewport();
+  } else {
+    actualizarUIFichaje();
+    if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+  }
+  // Sincronizar cola offline si hay conexión
+  sincronizarColaOffline();
 }
 
 // ── SETUP EVENTOS ─────────────────────────────────────────────────
@@ -388,26 +426,46 @@ async function prepararFichaje(autoConfirm) {
 }
 
 async function ejecutarFichaje({ comentario }) {
+  const datosFichaje = {
+    comentario,
+    ubicacionId:     state.ubicacion?.ID_Ubicacion || '',
+    ubicacionNombre: state.ubicacion?.Nombre || 'Manual',
+    metodo: state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user ? 'MINI_APP' : 'WEB'),
+    fecha: fechaHoy(),
+    hora:  horaActual()
+  };
+
+  // Confirmación inmediata (optimista)
+  beepCorto();
+  vibrarCorto();
+  const tipoEsperado = state.estadoHoy?.proximoTipo || 'ENTRADA';
+  toast('✅ ' + tipoEsperado + ' a las ' + datosFichaje.hora, 'ok');
+  document.getElementById('modal-confirmar')?.classList.add('hidden');
+
+  // Actualizar UI localmente sin esperar la red
+  const fichajesHoy = state.estadoHoy?.totalFichajesHoy || 0;
+  const nuevoTotal = fichajesHoy + 1;
+  if (state.estadoHoy) {
+    state.estadoHoy.proximoTipo = tipoEsperado === 'ENTRADA' ? 'SALIDA' : 'ENTRADA';
+    state.estadoHoy.totalFichajesHoy = nuevoTotal;
+  }
+  actualizarUIFichaje();
+
+  // Alarma automática solo en la 1ª SALIDA del día (2º fichaje)
+  if (tipoEsperado === 'SALIDA' && nuevoTotal === 2) abrirModalAlarma();
+
+  // Enviar a Apps Script (con fallback offline)
   try {
-    const res = await api('fichar', {
-      comentario,
-      ubicacionId:     state.ubicacion?.ID_Ubicacion || '',
-      ubicacionNombre: state.ubicacion?.Nombre || 'Manual',
-      metodo: state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user ? 'MINI_APP' : 'WEB')
-    });
+    const res = await api('fichar', datosFichaje);
     if (res.ok) {
-      beepCorto();
-      vibrarCorto();
-      toast('✅ ' + res.tipo + ' a las ' + res.hora, 'ok');
-      document.getElementById('modal-confirmar')?.classList.add('hidden');
+      // Sincronizado — refrescar estado real
       await refreshEstado();
-      // Alarma automática solo en la 1ª SALIDA del día (2º fichaje)
-      if (res.tipo === 'SALIDA' && res.fichajeNum === 2) {
-        abrirModalAlarma();
-      }
+      mostrarIndicadorSync(false);
     }
   } catch(err) {
-    toast('❌ ' + err.message, 'error');
+    // Sin conexión → guardar en cola offline
+    guardarEnColaOffline(datosFichaje, tipoEsperado);
+    toast('📶 Sin conexión — fichaje guardado localmente', 'warning');
   }
 }
 
@@ -739,5 +797,62 @@ function iniciarReloj() {
   clearInterval(window.__clockInt);
   window.__clockInt = setInterval(tick, 1000);
 }
+
+// ── COLA OFFLINE ─────────────────────────────────────────────────
+function cargarColaOffline() {
+  try {
+    const raw = localStorage.getItem('fichajes_cola');
+    state.colaOffline = raw ? JSON.parse(raw) : [];
+    mostrarIndicadorSync(state.colaOffline.length > 0);
+  } catch(e) { state.colaOffline = []; }
+}
+
+function guardarEnColaOffline(datos, tipo) {
+  state.colaOffline.push({ ...datos, tipo, timestamp: Date.now() });
+  localStorage.setItem('fichajes_cola', JSON.stringify(state.colaOffline));
+  mostrarIndicadorSync(true);
+}
+
+async function sincronizarColaOffline() {
+  if (!state.colaOffline.length) return;
+  const pendientes = [...state.colaOffline];
+  let sincronizados = 0;
+  for (const fichaje of pendientes) {
+    try {
+      await api('fichar', fichaje);
+      sincronizados++;
+      state.colaOffline = state.colaOffline.filter(f => f.timestamp !== fichaje.timestamp);
+      localStorage.setItem('fichajes_cola', JSON.stringify(state.colaOffline));
+    } catch(e) { break; } // Si falla, parar — seguirá en el próximo arranque
+  }
+  if (sincronizados > 0) {
+    toast('✅ ' + sincronizados + ' fichaje' + (sincronizados > 1 ? 's' : '') + ' sincronizado' + (sincronizados > 1 ? 's' : ''), 'ok');
+    mostrarIndicadorSync(false);
+    await refreshEstado();
+  }
+}
+
+function mostrarIndicadorSync(hayPendientes) {
+  const btn = document.getElementById('btn-fichar');
+  if (!btn) return;
+  const existing = document.getElementById('sync-indicator');
+  if (hayPendientes && !existing) {
+    const dot = document.createElement('span');
+    dot.id = 'sync-indicator';
+    dot.title = 'Fichajes pendientes de sincronizar';
+    dot.textContent = '🔄';
+    dot.style.cssText = 'position:absolute;top:-6px;right:-6px;font-size:14px;';
+    btn.style.position = 'relative';
+    btn.appendChild(dot);
+  } else if (!hayPendientes && existing) {
+    existing.remove();
+  }
+}
+
+// Intentar sincronizar cuando recupera conexión
+window.addEventListener('online', () => {
+  toast('📶 Conexión recuperada', 'ok');
+  sincronizarColaOffline();
+});
 
 window.api = api;
