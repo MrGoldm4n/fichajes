@@ -1,4 +1,4 @@
-/* ── FICHAJES v0.5.2 — styles.css ── */
+/* ── FICHAJES v0.5.4 — styles.css ── */
 
 :root {
   --bg:        #0d0d1a;
@@ -26,7 +26,12 @@ html, body {
 }
 
 /* ── SCREENS ───────────────────────────────────────── */
-.screen { display: none; flex-direction: column; height: 100dvh; overflow: hidden; }
+.screen {
+  display: none; flex-direction: column;
+  height: var(--tg-viewport-height, 100dvh);
+  max-height: var(--tg-viewport-height, 100dvh);
+  overflow: hidden;
+}
 .screen.active { display: flex; }
 .hidden { display: none !important; }
 
@@ -141,6 +146,31 @@ html, body {
 .btn-sm            { padding: 8px 14px; font-size: 13px; width: auto; border-radius: var(--radius-sm); }
 .btn-icon          { font-size: 20px; }
 
+/* Alarma activa — botón naranja */
+.btn-secondary.alarma-activa {
+  background: rgba(243,156,18,.15);
+  color: var(--orange);
+  border: 1px solid rgba(243,156,18,.4);
+}
+
+/* Botón Siri */
+.btn-siri {
+  background: linear-gradient(135deg, #1c1c1e, #2c2c2e);
+  color: #fff; border: 1px solid #48484a;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 14px 20px; border-radius: var(--radius);
+  font-size: 16px; font-weight: 600; cursor: pointer; width: 100%;
+  transition: transform .1s;
+}
+.btn-siri:active { transform: scale(.97); }
+
+/* Link instrucciones */
+.btn-link {
+  background: none; border: none; color: var(--text2);
+  font-size: 13px; cursor: pointer; text-decoration: underline;
+  padding: 4px; width: 100%; text-align: center;
+}
+
 /* ── MODALES ─────────────────────────────────────────── */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100;
@@ -165,9 +195,30 @@ html, body {
 .resumen-label { font-size: 12px; color: var(--text2); }
 .resumen-valor { font-size: 28px; font-weight: 700; color: var(--green); }
 
+/* Bloque dentro del modal alarma */
+.alarma-bloque { display: flex; flex-direction: column; gap: 10px; width: 100%; align-items: center; }
+
 /* ── TIMER ───────────────────────────────────────────── */
 .timer-display { font-size: 72px; font-weight: 700; letter-spacing: 3px; color: var(--accent); }
 .timer-label   { color: var(--text2); font-size: 14px; }
+
+/* ── INSTRUCCIONES SIRI ──────────────────────────────── */
+.instrucciones-lista { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+.instruccion-paso {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--bg3); border-radius: var(--radius-sm); padding: 12px;
+  font-size: 14px; line-height: 1.5;
+}
+.paso-num {
+  background: var(--accent); color: #fff;
+  width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0;
+}
+.highlight {
+  color: var(--accent); font-weight: 700;
+  background: rgba(79,142,247,.1); padding: 2px 6px; border-radius: 4px;
+}
 
 /* ── FIELDS ──────────────────────────────────────────── */
 .field-label    { font-size: 12px; color: var(--text2); font-weight: 500; }
@@ -222,18 +273,13 @@ html, body {
 
 /* ── MIS FICHAJES ────────────────────────────────────── */
 .fichajes-lista { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
-
-.dia-card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); overflow: hidden;
-}
+.dia-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .dia-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; background: var(--bg3); border-bottom: 1px solid var(--border);
 }
 .dia-fecha { font-size: 13px; font-weight: 700; text-transform: capitalize; }
 .dia-horas { font-size: 13px; font-weight: 700; color: var(--accent); }
-
 .fichaje-row {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 14px; border-bottom: 1px solid var(--border);
@@ -246,14 +292,10 @@ html, body {
 .fichaje-nota     { font-size: 11px; color: var(--text2); font-style: italic; }
 
 /* ── DASHBOARD ───────────────────────────────────────── */
-.dashboard-scroll {
-  flex: 1; overflow-y: auto; padding: 12px 16px;
-  display: flex; flex-direction: column; gap: 12px;
-}
+.dashboard-scroll { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
 .card          { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
 .card-label    { font-size: 12px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
 .card-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-
 .progress-bar-wrap { height: 8px; background: var(--bg3); border-radius: 99px; overflow: hidden; }
 .progress-bar      { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); border-radius: 99px; transition: width .5s; }
 .progress-stats    { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
@@ -261,7 +303,6 @@ html, body {
 .diferencial       { font-size: 14px; font-weight: 600; margin-left: auto; }
 .diferencial.pos   { color: var(--green); }
 .diferencial.neg   { color: var(--red); }
-
 .trimestres-grid      { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .trim-card            { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
 .trim-card.activo     { border-color: var(--accent); }
@@ -271,18 +312,9 @@ html, body {
 .trim-obj   { font-size: 11px; color: var(--text2); }
 
 /* ── SEMANA BARS ─────────────────────────────────────── */
-.semana-bars {
-  display: flex; align-items: flex-end; justify-content: space-around;
-  height: 90px; gap: 6px;
-}
-.semana-col {
-  flex: 1; display: flex; flex-direction: column;
-  align-items: center; gap: 4px; height: 100%; justify-content: flex-end;
-}
-.semana-bar-wrap {
-  flex: 1; width: 100%; display: flex; flex-direction: column;
-  align-items: center; justify-content: flex-end;
-}
+.semana-bars { display: flex; align-items: flex-end; justify-content: space-around; height: 90px; gap: 6px; }
+.semana-col  { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+.semana-bar-wrap { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
 .semana-bar   { width: 100%; border-radius: 4px 4px 0 0; background: var(--accent); min-height: 2px; transition: height .4s; }
 .semana-label { font-size: 10px; color: var(--text2); }
 .semana-h     { font-size: 10px; color: var(--text2); }
@@ -290,10 +322,7 @@ html, body {
 /* ── CALENDARIO ──────────────────────────────────────── */
 .calendario { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
 .cal-day-header { text-align: center; font-size: 10px; color: var(--text2); padding: 4px 0; }
-.cal-day {
-  aspect-ratio: 1; border-radius: 6px; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; font-size: 11px; background: var(--bg3);
-}
+.cal-day { aspect-ratio: 1; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; background: var(--bg3); }
 .cal-day.ok    { background: rgba(79,142,247,.15); color: var(--accent); }
 .cal-day.hoy   { background: var(--accent); color: #fff; font-weight: 700; }
 .cal-day.vacio { background: transparent; opacity: .3; }
@@ -303,28 +332,20 @@ html, body {
 
 /* ── ADMIN LISTA ─────────────────────────────────────── */
 .lista-admin { flex: 1; overflow-y: auto; padding: 12px 16px; }
-.admin-card {
-  display: flex; align-items: center; gap: 10px;
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 12px; margin-bottom: 8px;
-}
+.admin-card { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 8px; }
 .admin-card-info { flex: 1; display: flex; align-items: center; gap: 10px; }
 .admin-card-name { font-weight: 600; font-size: 14px; }
 .admin-card-sub  { font-size: 12px; color: var(--text2); margin-top: 2px; }
-.nfc-url         { word-break: break-all; }
 
 /* ── BADGES ──────────────────────────────────────────── */
-.badge {
-  display: inline-block; padding: 2px 8px; border-radius: 99px;
-  font-size: 11px; font-weight: 700;
-}
+.badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
 .badge.ok    { background: rgba(46,204,113,.15); color: var(--green); }
 .badge.warn  { background: rgba(243,156,18,.15);  color: var(--orange); }
 .badge.error { background: rgba(231,76,60,.15);   color: var(--red); }
 
-/* ── TOAST ───────────────────────────────────────────── */
+/* ── TOAST — por encima del botón fichar ─────────────── */
 .toast {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
   background: var(--bg3); border: 1px solid var(--border);
   color: var(--text); padding: 12px 22px; border-radius: var(--radius);
   font-size: 14px; z-index: 500; white-space: nowrap;
@@ -337,27 +358,8 @@ html, body {
 .toast.warning { border-color: var(--orange); color: var(--orange); }
 
 /* ── FAB BAR ─────────────────────────────────────────── */
-.fab-bar {
-  padding: 12px 16px; background: var(--bg2);
-  border-top: 1px solid var(--border); flex-shrink: 0;
-}
+.fab-bar { padding: 12px 16px; background: var(--bg2); border-top: 1px solid var(--border); flex-shrink: 0; }
 
 /* ── EMPTY / ERROR STATE ─────────────────────────────── */
 .empty-state       { text-align: center; color: var(--text2); padding: 40px 16px; font-size: 14px; }
 .empty-state.error { color: var(--red); }
-
-/* ── ALARMA ACTIVA ───────────────────────────────────── */
-.btn-secondary.alarma-activa {
-  background: rgba(243,156,18,.15);
-  color: var(--orange);
-  border: 1px solid rgba(243,156,18,.4);
-}
-
-/* ── TOAST — más arriba en Telegram ──────────────────── */
-.toast { bottom: 90px; }
-
-/* ── VIEWPORT TELEGRAM ───────────────────────────────── */
-.screen {
-  height: var(--tg-viewport-height, 100dvh);
-  max-height: var(--tg-viewport-height, 100dvh);
-}
