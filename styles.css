@@ -345,3 +345,19 @@ html, body {
 /* ── EMPTY / ERROR STATE ─────────────────────────────── */
 .empty-state       { text-align: center; color: var(--text2); padding: 40px 16px; font-size: 14px; }
 .empty-state.error { color: var(--red); }
+
+/* ── ALARMA ACTIVA ───────────────────────────────────── */
+.btn-secondary.alarma-activa {
+  background: rgba(243,156,18,.15);
+  color: var(--orange);
+  border: 1px solid rgba(243,156,18,.4);
+}
+
+/* ── TOAST — más arriba en Telegram ──────────────────── */
+.toast { bottom: 90px; }
+
+/* ── VIEWPORT TELEGRAM ───────────────────────────────── */
+.screen {
+  height: var(--tg-viewport-height, 100dvh);
+  max-height: var(--tg-viewport-height, 100dvh);
+}
