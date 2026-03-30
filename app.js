@@ -6,7 +6,7 @@ const state = {
   empleado: null, ubicacion: null, estadoHoy: null,
   timerInterval: null, timerSeconds: 0, alarmaActiva: false,
   empleados: [], ubicaciones: [], config: {},
-  wakeLock: null
+  wakeLock: null, alarmaSoundInterval: null
 };
 
 // ── AUDIO (con fix iOS) ───────────────────────────────────────────
@@ -51,24 +51,48 @@ function beepCorto() {
 }
 
 function alarmaFinal() {
-  try {
-    const ctx = getAudioCtx();
-    if (ctx.state === 'suspended') ctx.resume();
-    const freqs = [660, 880, 1100];
-    freqs.forEach((f, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.frequency.value = f;
-      osc.type = 'sine';
-      const t0 = ctx.currentTime + i * 0.35;
-      gain.gain.setValueAtTime(0.4, t0);
-      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28);
-      osc.start(t0);
-      osc.stop(t0 + 0.28);
-    });
-  } catch(e) {}
-  if (!esIOS && navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500]);
+  let rondas = 0;
+  const MAX_RONDAS = 10;
+
+  function tocarRonda() {
+    if (rondas >= MAX_RONDAS) return;
+    rondas++;
+    try {
+      const ctx = getAudioCtx();
+      if (ctx.state === 'suspended') ctx.resume();
+      const freqs = [660, 880, 1100];
+      freqs.forEach((f, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = f;
+        osc.type = 'sine';
+        const t0 = ctx.currentTime + i * 0.35;
+        gain.gain.setValueAtTime(0.4, t0);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28);
+        osc.start(t0);
+        osc.stop(t0 + 0.28);
+      });
+    } catch(e) {}
+    if (!esIOS && navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
+  }
+
+  tocarRonda();
+  state.alarmaSoundInterval = setInterval(() => {
+    if (rondas >= MAX_RONDAS) {
+      clearInterval(state.alarmaSoundInterval);
+      state.alarmaSoundInterval = null;
+      return;
+    }
+    tocarRonda();
+  }, 1500);
+}
+
+function pararSonidoAlarma() {
+  if (state.alarmaSoundInterval) {
+    clearInterval(state.alarmaSoundInterval);
+    state.alarmaSoundInterval = null;
+  }
 }
 
 function vibrarCorto() {
@@ -417,9 +441,9 @@ function abrirModalAlarma() {
   const label = document.getElementById('timer-label');
   if (label) label.textContent = 'Tiempo de descanso · ' + mins + ' min';
 
-  // Mostrar bloque correcto según plataforma
-  document.getElementById('alarma-android')?.classList.toggle('hidden', esIOS);
-  document.getElementById('alarma-ios')?.classList.toggle('hidden', !esIOS);
+  // Opción A: siempre usar bloque Android (contador + sonido Web Audio)
+  document.getElementById('alarma-android')?.classList.remove('hidden');
+  document.getElementById('alarma-ios')?.classList.add('hidden');
 
   // Actualizar display inicial
   state.timerSeconds = mins * 60;
@@ -452,6 +476,7 @@ function iniciarTimer(mins) {
 
 function detenerAlarma() {
   clearInterval(state.timerInterval);
+  pararSonidoAlarma();
   state.alarmaActiva = false;
   liberarWakeLock();
   actualizarBtnAlarma();
