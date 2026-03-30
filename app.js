@@ -1,24 +1,71 @@
-// FICHAJES v0.5.2 — app.js
+// FICHAJES v0.5.3 — app.js
 const GOOGLE_CLIENT_ID = '920497100034-08on4kifjrp7l80doe6ucs49ahop5v8c.apps.googleusercontent.com';
 const tg = window.Telegram?.WebApp;
-const state = { empleado:null, ubicacion:null, estadoHoy:null, timerInterval:null, timerSeconds:0, empleados:[], ubicaciones:[], config:{} };
+const state = {
+  empleado: null, ubicacion: null, estadoHoy: null,
+  timerInterval: null, timerSeconds: 0, alarmaActiva: false,
+  empleados: [], ubicaciones: [], config: {}
+};
+
+// ── AUDIO ─────────────────────────────────────────────────────────
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return _audioCtx;
+}
+
+function beepCorto() {
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.18);
+  } catch(e) { /* silencio si no hay soporte */ }
+}
+
+function alarmaFinal() {
+  // Tres pitidos ascendentes + vibración larga
+  try {
+    const ctx = getAudioCtx();
+    const freqs = [660, 880, 1100];
+    freqs.forEach((f, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = f;
+      osc.type = 'sine';
+      const t0 = ctx.currentTime + i * 0.32;
+      gain.gain.setValueAtTime(0.4, t0);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28);
+      osc.start(t0); osc.stop(t0 + 0.28);
+    });
+  } catch(e) {}
+  if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 500]);
+}
+
+function vibrarCorto() {
+  if (navigator.vibrate) navigator.vibrate(50);
+}
 
 // ── API ───────────────────────────────────────────────────────────
 async function api(action, data = {}) {
   const telegramId = tg?.initDataUnsafe?.user?.id || '';
   const emailGoogle = state.empleado?.emailGoogle || '';
-  const isWrite = ['fichar','corregirFichaje','guardarEmpleado','guardarUbicacion','resolverIncidencia','guardarConfig','loginGoogle'].includes(action);
+  const isWrite = ['fichar','corregirFichaje','guardarEmpleado','guardarUbicacion',
+                   'resolverIncidencia','guardarConfig','loginGoogle'].includes(action);
   const payload = { action, telegramId, emailGoogle, ...data };
-
   let res;
   if (isWrite) {
     res = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
   } else {
-    // FIX: pasar parámetros en la URL para peticiones GET
-    const params = new URLSearchParams(payload);
-    res = await fetch(APPS_SCRIPT_URL + '?' + params.toString(), { method: 'GET', redirect: 'follow' });
+    res = await fetch(APPS_SCRIPT_URL + '?' + new URLSearchParams(payload).toString(), { method: 'GET', redirect: 'follow' });
   }
-
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const json = await res.json();
   if (json.error) throw new Error(json.error);
@@ -28,35 +75,40 @@ async function api(action, data = {}) {
 // ── ARRANQUE ──────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
   try {
-    if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor('#0d0d1a'); tg.setBackgroundColor('#0d0d1a'); }
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      tg.setHeaderColor('#0d0d1a');
+      tg.setBackgroundColor('#0d0d1a');
+      // FIX Telegram: ajustar altura para que nada quede cortado
+      ajustarAlturaViewport();
+      tg.onEvent('viewportChanged', ajustarAlturaViewport);
+    }
     await sleep(700);
 
-    // Caso 1: dentro de Telegram
-    if (tg?.initDataUnsafe?.user?.id) {
-      await arrancarApp();
-      return;
-    }
+    if (tg?.initDataUnsafe?.user?.id) { await arrancarApp(); return; }
 
-    // Caso 2: navegador con sesión guardada
     const saved = localStorage.getItem('fichajes_emp');
     if (saved) {
-      try {
-        state.empleado = JSON.parse(saved);
-        await arrancarApp(true);
-        return;
-      } catch (e) {
-        localStorage.removeItem('fichajes_emp');
-      }
+      try { state.empleado = JSON.parse(saved); await arrancarApp(true); return; }
+      catch(e) { localStorage.removeItem('fichajes_emp'); }
     }
-
-    // Caso 3: navegador sin sesión → pantalla de login Google
     mostrarLoginGoogle();
-
-  } catch (err) {
+  } catch(err) {
     console.error(err);
     mostrarErrorInicio(err.message);
   }
 });
+
+function ajustarAlturaViewport() {
+  // Usa la altura estable de Telegram para que el botón no quede cortado
+  const h = tg?.viewportStableHeight || window.innerHeight;
+  document.documentElement.style.setProperty('--tg-viewport-height', h + 'px');
+  document.querySelectorAll('.screen').forEach(el => {
+    el.style.height = h + 'px';
+    el.style.maxHeight = h + 'px';
+  });
+}
 
 // ── LOGIN GOOGLE ──────────────────────────────────────────────────
 function mostrarLoginGoogle() {
@@ -88,28 +140,26 @@ async function handleGoogleLogin(response) {
     state.empleado = { ...data.empleado, emailGoogle: payload.email };
     localStorage.setItem('fichajes_emp', JSON.stringify(state.empleado));
     await arrancarApp(true);
-  } catch (err) {
+  } catch(err) {
     if (statusEl) { statusEl.textContent = 'Error: ' + err.message; statusEl.className = 'login-status error'; }
   }
 }
 
 // ── ARRANCAR APP ──────────────────────────────────────────────────
 async function arrancarApp(yaAutenticado = false) {
-  if (!yaAutenticado) {
-    state.empleado = await api('getEmpleado');
-  }
+  if (!yaAutenticado) state.empleado = await api('getEmpleado');
   const emp = state.empleado;
   const [ubicaciones, config] = await Promise.all([api('getUbicaciones'), api('getConfig')]);
   state.ubicaciones = ubicaciones || [];
   state.config = config || {};
   actualizarUIEmpleado(emp);
 
-  // ¿Viene de NFC?
   const locParam = tg?.initDataUnsafe?.start_param || new URLSearchParams(location.search).get('loc') || '';
   if (locParam) {
     state.ubicacion = state.ubicaciones.find(u => u.NFC_Param === locParam || u.ID_Ubicacion === locParam) || null;
     if (state.ubicacion) {
-      document.getElementById('fichar-ubicacion') && (document.getElementById('fichar-ubicacion').textContent = '📍 ' + state.ubicacion.Nombre);
+      const el = document.getElementById('fichar-ubicacion');
+      if (el) el.textContent = '📍 ' + state.ubicacion.Nombre;
     }
   }
 
@@ -120,9 +170,10 @@ async function arrancarApp(yaAutenticado = false) {
   iniciarReloj();
   setupNavegacion();
 
-  if (emp.Rol === 'admin') {
-    document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
-  }
+  if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+
+  // Ajustar viewport si estamos en Telegram
+  if (tg) ajustarAlturaViewport();
 }
 
 // ── SETUP EVENTOS (solo una vez) ───────────────────────────────────
@@ -130,44 +181,43 @@ function setupOnce() {
   if (window.__fichajesSetupDone) return;
   window.__fichajesSetupDone = true;
 
-  document.getElementById('btn-fichar')?.addEventListener('click', () => prepararFichaje(false));
-  document.getElementById('btn-alarma')?.addEventListener('click', iniciarTimerDescanso);
+  document.getElementById('btn-fichar')?.addEventListener('click', () => { vibrarCorto(); prepararFichaje(false); });
+  document.getElementById('btn-alarma')?.addEventListener('click', () => { vibrarCorto(); abrirModalAlarma(); });
   document.getElementById('btn-manual')?.addEventListener('click', abrirFichajeManual);
 
-  // Modal confirmar
+  // Modal confirmar fichaje
   document.getElementById('modal-cancel')?.addEventListener('click', () => document.getElementById('modal-confirmar')?.classList.add('hidden'));
   document.getElementById('modal-confirm')?.addEventListener('click', async () => {
+    vibrarCorto();
     await ejecutarFichaje({ comentario: document.getElementById('modal-comentario')?.value?.trim() || '' });
   });
 
-  // Modal manual
+  // Modal fichaje manual
   document.getElementById('manual-cancel')?.addEventListener('click', () => document.getElementById('modal-manual')?.classList.add('hidden'));
-  document.getElementById('manual-confirm')?.addEventListener('click', enviarFichajeManual);
+  document.getElementById('manual-confirm')?.addEventListener('click', () => { vibrarCorto(); enviarFichajeManual(); });
 
-  // Modal timer descanso
+  // Modal alarma
   document.getElementById('btn-volver-fichar')?.addEventListener('click', () => {
-    clearInterval(state.timerInterval);
+    detenerAlarma();
     document.getElementById('modal-alarma')?.classList.add('hidden');
     prepararFichaje(false);
   });
   document.getElementById('btn-cancelar-timer')?.addEventListener('click', () => {
-    clearInterval(state.timerInterval);
+    detenerAlarma();
     document.getElementById('modal-alarma')?.classList.add('hidden');
+    // Botón sigue visible para activar después
+    actualizarBtnAlarma();
   });
 
-  // Sidebar overlay
-  document.getElementById('sidebar-overlay')?.addEventListener('click', cerrarSidebar);
+  // Sidebar
   document.getElementById('btn-menu')?.addEventListener('click', abrirSidebar);
+  document.getElementById('sidebar-overlay')?.addEventListener('click', cerrarSidebar);
 }
 
 // ── NAVEGACIÓN ─────────────────────────────────────────────────────
 function setupNavegacion() {
   document.querySelectorAll('[data-view]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const view = btn.dataset.view;
-      mostrarPantalla(view);
-      cerrarSidebar();
-    });
+    btn.addEventListener('click', () => { mostrarPantalla(btn.dataset.view); cerrarSidebar(); });
   });
   document.querySelectorAll('[data-back]').forEach(btn => {
     btn.addEventListener('click', () => mostrarPantalla(btn.dataset.back));
@@ -178,28 +228,22 @@ function mostrarPantalla(view) {
   ocultarPantallas();
   const el = document.getElementById('screen-' + view);
   if (el) el.classList.add('active');
-  // Cargar datos según pantalla
   if (view === 'mis-fichajes') cargarMisFichajes();
-  if (view === 'dashboard') cargarDashboard();
-  if (view === 'empleados') cargarEmpleados();
-  if (view === 'ubicaciones') cargarUbicaciones();
-  if (view === 'incidencias') cargarIncidencias();
+  if (view === 'dashboard')    cargarDashboard();
+  if (view === 'empleados')    cargarEmpleados();
+  if (view === 'ubicaciones')  cargarUbicaciones();
+  if (view === 'incidencias')  cargarIncidencias();
+  if (tg) ajustarAlturaViewport();
 }
 
-function abrirSidebar() {
-  document.getElementById('sidebar')?.classList.remove('hidden');
-  document.getElementById('sidebar-overlay')?.classList.remove('hidden');
-}
-function cerrarSidebar() {
-  document.getElementById('sidebar')?.classList.add('hidden');
-  document.getElementById('sidebar-overlay')?.classList.add('hidden');
-}
+function abrirSidebar()  { document.getElementById('sidebar')?.classList.remove('hidden'); document.getElementById('sidebar-overlay')?.classList.remove('hidden'); }
+function cerrarSidebar() { document.getElementById('sidebar')?.classList.add('hidden');    document.getElementById('sidebar-overlay')?.classList.add('hidden'); }
 
 // ── UI EMPLEADO ────────────────────────────────────────────────────
 function actualizarUIEmpleado(emp) {
   const ini = (emp.Nombre_Completo || '').split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase();
-  ['fichar-avatar', 'sidebar-avatar'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ini; });
-  ['fichar-nombre', 'sidebar-name'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = emp.Nombre_Completo || ''; });
+  ['fichar-avatar','sidebar-avatar'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ini; });
+  ['fichar-nombre','sidebar-name'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = emp.Nombre_Completo || ''; });
   const role = document.getElementById('sidebar-role'); if (role) role.textContent = emp.Rol || '';
 }
 
@@ -207,17 +251,34 @@ function actualizarUIEmpleado(emp) {
 async function refreshEstado() {
   state.estadoHoy = await api('getEstado');
   actualizarUIFichaje();
+  actualizarBtnAlarma();
 }
 
 function actualizarUIFichaje() {
   const s = state.estadoHoy; if (!s) return;
-  const badge = document.getElementById('tipo-badge'); if (badge) badge.textContent = s.proximoTipo || 'ENTRADA';
+  const badge = document.getElementById('tipo-badge');
+  if (badge) badge.textContent = s.proximoTipo || 'ENTRADA';
   const count = document.getElementById('fichar-count');
   if (count) count.textContent = (s.totalFichajesHoy || 0) + ' fichaje' + ((s.totalFichajesHoy || 0) === 1 ? '' : 's') + ' hoy';
   const btn = document.getElementById('btn-fichar');
   if (btn) btn.className = 'btn btn-fichar' + (s.proximoTipo === 'SALIDA' ? ' salida' : '');
   const btnText = document.getElementById('btn-fichar-text');
   if (btnText) btnText.textContent = 'Registrar ' + (s.proximoTipo || 'ENTRADA');
+}
+
+// Muestra/oculta y actualiza el aspecto del botón de alarma
+function actualizarBtnAlarma() {
+  const btn = document.getElementById('btn-alarma');
+  if (!btn) return;
+  // Siempre visible
+  btn.classList.remove('hidden');
+  if (state.alarmaActiva) {
+    btn.textContent = '⏱ Alarma activa';
+    btn.classList.add('alarma-activa');
+  } else {
+    btn.textContent = '⏱ Alarma';
+    btn.classList.remove('alarma-activa');
+  }
 }
 
 async function prepararFichaje(autoConfirm) {
@@ -228,11 +289,14 @@ async function prepararFichaje(autoConfirm) {
   document.getElementById('modal-icon').textContent = tipo === 'ENTRADA' ? '🟢' : '🔴';
   document.getElementById('modal-titulo').textContent = 'Confirmar fichaje';
   document.getElementById('modal-subtitulo').textContent = tipo + ' — ' + horaActual();
+
   const resumen = document.getElementById('modal-resumen-horas');
   if (tipo === 'SALIDA' && resumen) {
+    const horas = calcularHorasDia(state.estadoHoy?.fichajesHoy || []);
     resumen.classList.remove('hidden');
-    document.getElementById('resumen-valor').textContent = calcularHorasDia(state.estadoHoy?.fichajesHoy || []) || '—';
+    document.getElementById('resumen-valor').textContent = horas || '—';
   } else if (resumen) resumen.classList.add('hidden');
+
   document.getElementById('modal-comentario').value = '';
   document.getElementById('modal-confirmar')?.classList.remove('hidden');
 }
@@ -241,17 +305,23 @@ async function ejecutarFichaje({ comentario }) {
   try {
     const res = await api('fichar', {
       comentario,
-      ubicacionId: state.ubicacion?.ID_Ubicacion || '',
+      ubicacionId:     state.ubicacion?.ID_Ubicacion || '',
       ubicacionNombre: state.ubicacion?.Nombre || 'Manual',
       metodo: state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user ? 'MINI_APP' : 'WEB')
     });
     if (res.ok) {
+      beepCorto();
+      if (navigator.vibrate) navigator.vibrate([50, 30, 80]);
       toast('✅ ' + res.tipo + ' a las ' + res.hora, 'ok');
       document.getElementById('modal-confirmar')?.classList.add('hidden');
       await refreshEstado();
-      if (res.tipo === 'SALIDA') iniciarTimerDescanso();
+
+      // Alarma automática solo tras la 1ª SALIDA del día (2º fichaje)
+      if (res.tipo === 'SALIDA' && res.fichajeNum === 2) {
+        abrirModalAlarma();
+      }
     }
-  } catch (err) {
+  } catch(err) {
     toast('❌ ' + err.message, 'error');
   }
 }
@@ -259,46 +329,63 @@ async function ejecutarFichaje({ comentario }) {
 // ── FICHAJE MANUAL ─────────────────────────────────────────────────
 function abrirFichajeManual() {
   document.getElementById('manual-fecha').value = fechaHoy();
-  document.getElementById('manual-hora').value = horaActual();
+  document.getElementById('manual-hora').value  = horaActual();
   document.getElementById('manual-comentario').value = '';
   document.getElementById('modal-manual')?.classList.remove('hidden');
 }
 
 async function enviarFichajeManual() {
-  const fecha = document.getElementById('manual-fecha')?.value;
-  const hora = document.getElementById('manual-hora')?.value;
+  const fecha     = document.getElementById('manual-fecha')?.value;
+  const hora      = document.getElementById('manual-hora')?.value;
   const comentario = document.getElementById('manual-comentario')?.value?.trim() || '';
   if (!fecha || !hora) { toast('Indica fecha y hora', 'error'); return; }
   try {
-    const res = await api('fichar', {
-      fecha, hora, comentario,
-      ubicacionId: '', ubicacionNombre: 'Manual', metodo: 'MANUAL'
-    });
+    const res = await api('fichar', { fecha, hora, comentario, ubicacionId: '', ubicacionNombre: 'Manual', metodo: 'MANUAL' });
     if (res.ok) {
+      beepCorto();
       toast('✅ ' + res.tipo + ' manual registrada', 'ok');
       document.getElementById('modal-manual')?.classList.add('hidden');
       await refreshEstado();
     }
-  } catch (err) {
+  } catch(err) {
     toast('❌ ' + err.message, 'error');
   }
 }
 
-// ── TIMER DESCANSO ─────────────────────────────────────────────────
-function iniciarTimerDescanso() {
+// ── ALARMA ────────────────────────────────────────────────────────
+function abrirModalAlarma() {
   const mins = parseInt(state.empleado?.Alarma_Descanso || state.config?.ALARMA_DESCANSO || '25', 10);
-  state.timerSeconds = mins * 60;
+  // Mostrar duración en el modal
+  const label = document.getElementById('timer-label');
+  if (label) label.textContent = 'Tiempo de descanso · ' + mins + ' min';
   document.getElementById('modal-alarma')?.classList.remove('hidden');
-  clearInterval(state.timerInterval);
+  // Iniciar si se confirma — el modal tiene botón de iniciar y cancelar
+  // Si se viene automáticamente, arrancar directamente
+  iniciarTimer(mins);
+}
+
+function iniciarTimer(mins) {
+  detenerAlarma();
+  state.timerSeconds = mins * 60;
+  state.alarmaActiva = true;
+  actualizarBtnAlarma();
   actualizarTimerDisplay();
   state.timerInterval = setInterval(() => {
     state.timerSeconds--;
     actualizarTimerDisplay();
     if (state.timerSeconds <= 0) {
-      clearInterval(state.timerInterval);
-      toast('⏰ Descanso completado. ¡Hora de volver!', 'warning');
+      detenerAlarma();
+      alarmaFinal();
+      toast('⏰ ¡Descanso terminado! Hora de volver.', 'warning');
+      // Mantener modal abierto para que el usuario lo vea
     }
   }, 1000);
+}
+
+function detenerAlarma() {
+  clearInterval(state.timerInterval);
+  state.alarmaActiva = false;
+  actualizarBtnAlarma();
 }
 
 function actualizarTimerDisplay() {
@@ -310,26 +397,22 @@ function actualizarTimerDisplay() {
 
 // ── MIS FICHAJES ───────────────────────────────────────────────────
 async function cargarMisFichajes() {
-  const input = document.getElementById('filter-mes');
-  if (!input) return;
+  const input = document.getElementById('filter-mes'); if (!input) return;
   const hoy = new Date();
   if (!input.value) input.value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
   input.onchange = () => cargarMisFichajes();
-  const [año, mes] = input.value.split('-');
-  const lista = document.getElementById('lista-fichajes');
-  if (!lista) return;
+  const lista = document.getElementById('lista-fichajes'); if (!lista) return;
   lista.innerHTML = '<div class="empty-state">Cargando…</div>';
   try {
     const data = await api('getFichajes', { mes: input.value });
     if (!data.length) { lista.innerHTML = '<div class="empty-state">Sin fichajes este mes</div>'; return; }
-    // Agrupar por día
     const porDia = {};
     data.forEach(f => { if (!porDia[f.Fecha]) porDia[f.Fecha] = []; porDia[f.Fecha].push(f); });
     lista.innerHTML = Object.keys(porDia).sort().reverse().map(fecha => {
       const fichajesDia = porDia[fecha];
       const horas = calcularHorasDia(fichajesDia);
       const filas = fichajesDia.map(f =>
-        `<div class="fichaje-row ${f.Tipo.toLowerCase()}">
+        `<div class="fichaje-row">
           <span class="fichaje-tipo-dot">${f.Tipo === 'ENTRADA' ? '🟢' : '🔴'}</span>
           <span class="fichaje-hora">${f.Hora}</span>
           <span class="fichaje-tipo">${f.Tipo}</span>
@@ -345,7 +428,7 @@ async function cargarMisFichajes() {
         ${filas}
       </div>`;
     }).join('');
-  } catch (err) {
+  } catch(err) {
     lista.innerHTML = '<div class="empty-state error">Error: ' + err.message + '</div>';
   }
 }
@@ -354,27 +437,24 @@ async function cargarMisFichajes() {
 async function cargarDashboard() {
   try {
     const año = new Date().getFullYear();
-    document.getElementById('dash-año') && (document.getElementById('dash-año').textContent = año);
+    const dashAño = document.getElementById('dash-año'); if (dashAño) dashAño.textContent = año;
     const resumen = await api('getResumen', { año });
-    // Barra anual
-    const obj = parseInt(state.empleado?.Horas_Anuales || 1770);
+    const obj  = parseInt(state.empleado?.Horas_Anuales || 1770);
     const real = resumen.horasRealizadas || 0;
-    const pct = Math.min(100, Math.round((real / obj) * 100));
+    const pct  = Math.min(100, Math.round((real / obj) * 100));
     const barra = document.getElementById('dash-barra-anual'); if (barra) barra.style.width = pct + '%';
     const hReal = document.getElementById('dash-horas-real'); if (hReal) hReal.textContent = real + 'h';
-    const hObj = document.getElementById('dash-horas-obj'); if (hObj) hObj.textContent = '/ ' + obj + 'h';
-    const dif = real - obj; const difEl = document.getElementById('dash-diferencial');
+    const hObj  = document.getElementById('dash-horas-obj');  if (hObj)  hObj.textContent  = '/ ' + obj + 'h';
+    const dif = real - obj;
+    const difEl = document.getElementById('dash-diferencial');
     if (difEl) { difEl.textContent = (dif >= 0 ? '+' : '') + dif + 'h'; difEl.className = 'diferencial ' + (dif >= 0 ? 'pos' : 'neg'); }
-    // Semana
     if (resumen.semana) renderSemana(resumen.semana);
-  } catch (err) {
-    console.error('Dashboard error:', err);
-  }
+  } catch(err) { console.error('Dashboard error:', err); }
 }
 
 function renderSemana(dias) {
   const cont = document.getElementById('semana-bars'); if (!cont) return;
-  const names = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do'];
+  const names = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
   const max = Math.max(...dias.map(d => d.minutos || 0), 1);
   cont.innerHTML = dias.map((d, i) => {
     const pct = Math.round(((d.minutos || 0) / max) * 100);
@@ -393,37 +473,37 @@ async function cargarEmpleados() {
   try {
     state.empleados = await api('getEmpleados');
     lista.innerHTML = state.empleados.map(emp => `
-      <div class="admin-card" data-id="${emp.ID_Empleado}">
+      <div class="admin-card">
         <div class="admin-card-info">
-          <span class="avatar sm">${(emp.Nombre_Completo || '').split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()}</span>
+          <span class="avatar sm">${(emp.Nombre_Completo||'').split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()}</span>
           <div>
             <div class="admin-card-name">${emp.Nombre_Completo}</div>
-            <div class="admin-card-sub">${emp.Email || ''} · ${emp.Rol}</div>
+            <div class="admin-card-sub">${emp.Email||''} · ${emp.Rol}</div>
           </div>
         </div>
         <button class="btn btn-sm btn-ghost" onclick="editarEmpleado('${emp.ID_Empleado}')">✏️</button>
       </div>`).join('') || '<div class="empty-state">Sin empleados</div>';
-    document.getElementById('btn-nuevo-empleado')?.addEventListener('click', () => abrirFormEmpleado(null));
-  } catch (err) {
+    document.getElementById('btn-nuevo-empleado').onclick = () => abrirFormEmpleado(null);
+  } catch(err) {
     lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>';
   }
 }
 
 function abrirFormEmpleado(emp) {
   document.getElementById('emp-form-titulo').textContent = emp ? 'Editar Empleado' : 'Nuevo Empleado';
-  document.getElementById('emp-id').value = emp?.ID_Empleado || '';
-  document.getElementById('emp-nombre').value = emp?.Nombre_Completo || '';
-  document.getElementById('emp-numero').value = emp?.Numero_Empleado || '';
-  document.getElementById('emp-email').value = emp?.Email || '';
-  document.getElementById('emp-tgid').value = emp?.Telegram_ID || '';
-  document.getElementById('emp-rol').value = emp?.Rol || 'empleado';
-  document.getElementById('emp-notif').value = emp?.Notificaciones || 'privado';
-  document.getElementById('emp-horas').value = emp?.Horas_Anuales || '1770';
-  document.getElementById('emp-alarma').value = emp?.Alarma_Descanso || '25';
-  document.getElementById('emp-confirmar').value = emp?.Confirmar_Fichaje || 'true';
+  document.getElementById('emp-id').value          = emp?.ID_Empleado || '';
+  document.getElementById('emp-nombre').value      = emp?.Nombre_Completo || '';
+  document.getElementById('emp-numero').value      = emp?.Numero_Empleado || '';
+  document.getElementById('emp-email').value       = emp?.Email || '';
+  document.getElementById('emp-tgid').value        = emp?.Telegram_ID || '';
+  document.getElementById('emp-rol').value         = emp?.Rol || 'empleado';
+  document.getElementById('emp-notif').value       = emp?.Notificaciones || 'privado';
+  document.getElementById('emp-horas').value       = emp?.Horas_Anuales || '1770';
+  document.getElementById('emp-alarma').value      = emp?.Alarma_Descanso || '25';
+  document.getElementById('emp-confirmar').value   = emp?.Confirmar_Fichaje || 'true';
   document.getElementById('modal-empleado')?.classList.remove('hidden');
   document.getElementById('emp-cancel').onclick = () => document.getElementById('modal-empleado')?.classList.add('hidden');
-  document.getElementById('emp-save').onclick = guardarEmpleadoForm;
+  document.getElementById('emp-save').onclick   = guardarEmpleadoForm;
 }
 
 function editarEmpleado(id) {
@@ -434,23 +514,21 @@ function editarEmpleado(id) {
 async function guardarEmpleadoForm() {
   try {
     await api('guardarEmpleado', {
-      id: document.getElementById('emp-id').value,
-      nombre: document.getElementById('emp-nombre').value,
-      numero: document.getElementById('emp-numero').value,
-      email: document.getElementById('emp-email').value,
-      telegramId: document.getElementById('emp-tgid').value,
-      rol: document.getElementById('emp-rol').value,
-      notificaciones: document.getElementById('emp-notif').value,
-      horasAnuales: document.getElementById('emp-horas').value,
-      alarmaDescanso: document.getElementById('emp-alarma').value,
-      confirmarFichaje: document.getElementById('emp-confirmar').value,
+      id:              document.getElementById('emp-id').value,
+      nombre:          document.getElementById('emp-nombre').value,
+      numero:          document.getElementById('emp-numero').value,
+      email:           document.getElementById('emp-email').value,
+      telegramId:      document.getElementById('emp-tgid').value,
+      rol:             document.getElementById('emp-rol').value,
+      notificaciones:  document.getElementById('emp-notif').value,
+      horasAnuales:    document.getElementById('emp-horas').value,
+      alarmaDescanso:  document.getElementById('emp-alarma').value,
+      confirmarFichaje:document.getElementById('emp-confirmar').value,
     });
     toast('✅ Empleado guardado', 'ok');
     document.getElementById('modal-empleado')?.classList.add('hidden');
     await cargarEmpleados();
-  } catch (err) {
-    toast('❌ ' + err.message, 'error');
-  }
+  } catch(err) { toast('❌ ' + err.message, 'error'); }
 }
 
 // ── ADMIN: UBICACIONES ─────────────────────────────────────────────
@@ -469,7 +547,7 @@ async function cargarUbicaciones() {
           </div>
         </div>
       </div>`).join('') || '<div class="empty-state">Sin ubicaciones</div>';
-  } catch (err) {
+  } catch(err) {
     lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>';
   }
 }
@@ -492,7 +570,7 @@ async function cargarIncidencias() {
         </div>
         <span class="badge ${inc.Estado === 'resuelta' ? 'ok' : 'warn'}">${inc.Estado}</span>
       </div>`).join('');
-  } catch (err) {
+  } catch(err) {
     lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>';
   }
 }
@@ -513,7 +591,7 @@ function toast(msg, tipo = 'ok') {
   const el = document.getElementById('toast'); if (!el) return;
   el.textContent = msg;
   el.className = 'toast show ' + tipo;
-  setTimeout(() => el.className = 'toast hidden', 2800);
+  setTimeout(() => el.className = 'toast hidden', 3000);
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -534,26 +612,30 @@ function formatearFecha(str) {
   return new Date(y, m - 1, d).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+// FIX "nahaj": si no hay pares completos devuelve null limpiamente
 function calcularHorasDia(fichajes) {
   if (!Array.isArray(fichajes) || fichajes.length < 2) return null;
   const ord = [...fichajes].sort((a, b) => (a.Hora || '').localeCompare(b.Hora || ''));
   let mins = 0;
   for (let i = 0; i < ord.length - 1; i += 2) {
     if (ord[i].Tipo === 'ENTRADA' && ord[i + 1]?.Tipo === 'SALIDA') {
-      const [hE, mE] = (ord[i].Hora || '0:0').split(':').map(Number);
-      const [hS, mS] = (ord[i + 1].Hora || '0:0').split(':').map(Number);
-      mins += (hS * 60 + mS) - (hE * 60 + mE);
+      const [hE, mE] = (ord[i].Hora     || '0:0').split(':').map(Number);
+      const [hS, mS] = (ord[i+1].Hora || '0:0').split(':').map(Number);
+      const diff = (hS * 60 + mS) - (hE * 60 + mE);
+      if (diff > 0) mins += diff;
     }
   }
   if (mins <= 0) return null;
-  return Math.floor(mins / 60) + 'h' + (mins % 60 ? ' ' + mins % 60 + 'm' : '');
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h + 'h' + (m > 0 ? ' ' + m + 'm' : '');
 }
 
 function iniciarReloj() {
   const tick = () => {
     const now = new Date();
     const t = document.getElementById('clock-time');
-    if (t) t.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    if (t) t.textContent = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
     const d = document.getElementById('clock-date');
     if (d) d.textContent = now.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
   };
