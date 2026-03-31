@@ -1,136 +1,24 @@
-// FICHAJES v0.5.4 — app.js
+// FICHAJES v0.5.3 — app.js
 const GOOGLE_CLIENT_ID = '920497100034-08on4kifjrp7l80doe6ucs49ahop5v8c.apps.googleusercontent.com';
 const tg = window.Telegram?.WebApp;
-const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-const state = {
-  empleado: null, ubicacion: null, estadoHoy: null,
-  timerInterval: null, timerSeconds: 0, alarmaActiva: false,
-  empleados: [], ubicaciones: [], config: {},
-  wakeLock: null, alarmaSoundInterval: null,
-  colaOffline: [] // fichajes pendientes de sincronizar
-};
-
-// ── AUDIO (con fix iOS) ───────────────────────────────────────────
-let _audioCtx = null;
-let _audioDesbloqueado = false;
-
-function getAudioCtx() {
-  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  return _audioCtx;
-}
-
-// Llama esto en el primer tap del usuario — desbloquea audio en iOS
-function desbloquearAudio() {
-  if (_audioDesbloqueado) return;
-  try {
-    const ctx = getAudioCtx();
-    if (ctx.state === 'suspended') ctx.resume();
-    // Silencio de 1ms para "activar" el contexto en iOS
-    const buf = ctx.createBuffer(1, 1, 22050);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
-    _audioDesbloqueado = true;
-  } catch(e) {}
-}
-
-function beepCorto() {
-  try {
-    const ctx = getAudioCtx();
-    if (ctx.state === 'suspended') ctx.resume();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.frequency.value = 880;
-    osc.type = 'sine';
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.18);
-  } catch(e) {}
-}
-
-function alarmaFinal() {
-  let rondas = 0;
-  const MAX_RONDAS = 10;
-
-  function tocarRonda() {
-    if (rondas >= MAX_RONDAS) return;
-    rondas++;
-    try {
-      const ctx = getAudioCtx();
-      if (ctx.state === 'suspended') ctx.resume();
-      const freqs = [660, 880, 1100];
-      freqs.forEach((f, i) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.value = f;
-        osc.type = 'sine';
-        const t0 = ctx.currentTime + i * 0.35;
-        gain.gain.setValueAtTime(0.4, t0);
-        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.28);
-        osc.start(t0);
-        osc.stop(t0 + 0.28);
-      });
-    } catch(e) {}
-    if (!esIOS && navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
-  }
-
-  tocarRonda();
-  state.alarmaSoundInterval = setInterval(() => {
-    if (rondas >= MAX_RONDAS) {
-      clearInterval(state.alarmaSoundInterval);
-      state.alarmaSoundInterval = null;
-      return;
-    }
-    tocarRonda();
-  }, 1500);
-}
-
-function pararSonidoAlarma() {
-  if (state.alarmaSoundInterval) {
-    clearInterval(state.alarmaSoundInterval);
-    state.alarmaSoundInterval = null;
-  }
-}
-
-function vibrarCorto() {
-  if (!esIOS && navigator.vibrate) navigator.vibrate(50);
-}
-
-// ── WAKE LOCK ─────────────────────────────────────────────────────
-async function activarWakeLock() {
-  if (!('wakeLock' in navigator)) return;
-  try {
-    state.wakeLock = await navigator.wakeLock.request('screen');
-    state.wakeLock.addEventListener('release', () => { state.wakeLock = null; });
-  } catch(e) {}
-}
-
-function liberarWakeLock() {
-  if (state.wakeLock) { state.wakeLock.release(); state.wakeLock = null; }
-}
-
-// Re-adquirir wake lock si la página vuelve a primer plano
-document.addEventListener('visibilitychange', async () => {
-  if (state.alarmaActiva && document.visibilityState === 'visible') await activarWakeLock();
-});
+const IS_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const state = { empleado:null, ubicacion:null, estadoHoy:null, timerInterval:null, timerSeconds:0, empleados:[], ubicaciones:[], config:{} };
 
 // ── API ───────────────────────────────────────────────────────────
 async function api(action, data = {}) {
-  const telegramId   = tg?.initDataUnsafe?.user?.id || '';
-  const emailGoogle  = state.empleado?.emailGoogle || '';
-  const isWrite = ['fichar','corregirFichaje','guardarEmpleado','guardarUbicacion',
-                   'resolverIncidencia','guardarConfig','loginGoogle'].includes(action);
+  const telegramId = tg?.initDataUnsafe?.user?.id || '';
+  const emailGoogle = state.empleado?.emailGoogle || '';
+  const isWrite = ['fichar','corregirFichaje','guardarEmpleado','guardarUbicacion','resolverIncidencia','guardarConfig','loginGoogle'].includes(action);
   const payload = { action, telegramId, emailGoogle, ...data };
+
   let res;
   if (isWrite) {
     res = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
   } else {
-    res = await fetch(APPS_SCRIPT_URL + '?' + new URLSearchParams(payload).toString(), { method: 'GET', redirect: 'follow' });
+    const params = new URLSearchParams(payload);
+    res = await fetch(APPS_SCRIPT_URL + '?' + params.toString(), { method: 'GET', redirect: 'follow' });
   }
+
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const json = await res.json();
   if (json.error) throw new Error(json.error);
@@ -139,42 +27,24 @@ async function api(action, data = {}) {
 
 // ── ARRANQUE ──────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
-  // Desbloquear audio en el primer tap (crítico para iOS)
-  document.addEventListener('touchstart', desbloquearAudio, { once: true });
-  document.addEventListener('click',      desbloquearAudio, { once: true });
-
-  // Registrar Service Worker
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
-  }
-
   try {
-    if (tg) {
-      tg.ready(); tg.expand();
-      tg.setHeaderColor('#0d0d1a');
-      tg.setBackgroundColor('#0d0d1a');
-      ajustarAlturaViewport();
-      tg.onEvent('viewportChanged', ajustarAlturaViewport);
-    }
+    if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor('#0d0d1a'); tg.setBackgroundColor('#0d0d1a'); }
+    await sleep(700);
 
     if (tg?.initDataUnsafe?.user?.id) { await arrancarApp(); return; }
 
     const saved = localStorage.getItem('fichajes_emp');
     if (saved) {
       try { state.empleado = JSON.parse(saved); await arrancarApp(true); return; }
-      catch(e) { localStorage.removeItem('fichajes_emp'); }
+      catch (e) { localStorage.removeItem('fichajes_emp'); }
     }
+
     mostrarLoginGoogle();
-  } catch(err) {
+  } catch (err) {
     console.error(err);
     mostrarErrorInicio(err.message);
   }
 });
-
-function ajustarAlturaViewport() {
-  const h = tg?.viewportStableHeight || window.innerHeight;
-  document.documentElement.style.setProperty('--tg-viewport-height', h + 'px');
-}
 
 // ── LOGIN GOOGLE ──────────────────────────────────────────────────
 function mostrarLoginGoogle() {
@@ -206,140 +76,74 @@ async function handleGoogleLogin(response) {
     state.empleado = { ...data.empleado, emailGoogle: payload.email };
     localStorage.setItem('fichajes_emp', JSON.stringify(state.empleado));
     await arrancarApp(true);
-  } catch(err) {
+  } catch (err) {
     if (statusEl) { statusEl.textContent = 'Error: ' + err.message; statusEl.className = 'login-status error'; }
   }
 }
 
 // ── ARRANCAR APP ──────────────────────────────────────────────────
 async function arrancarApp(yaAutenticado = false) {
-  // Cargar cola offline guardada
-  cargarColaOffline();
-
-  // ── PASO 1: mostrar pantalla inmediatamente con datos cacheados ──
-  const empCacheado = state.empleado || cargarEmpleadoCache();
-  const estadoCacheado = cargarEstadoCache();
-  if (empCacheado) {
-    state.empleado = empCacheado;
-    if (estadoCacheado) { state.estadoHoy = estadoCacheado; }
-    actualizarUIEmpleado(empCacheado);
-    actualizarUIFichaje();
-    actualizarBtnAlarma();
-    ocultarPantallas();
-    document.getElementById('screen-fichar')?.classList.add('active');
-    setupOnce();
-    iniciarReloj();
-    setupNavegacion();
-    if (empCacheado.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
-    if (tg) ajustarAlturaViewport();
-  }
-
-  // ── PASO 2: actualizar datos desde red en paralelo (no bloquea la UI) ──
-  try {
-    const promesas = [api('getUbicaciones'), api('getConfig')];
-    if (!yaAutenticado) promesas.unshift(api('getEmpleado'));
-    const resultados = await Promise.all(promesas);
-    if (!yaAutenticado) {
-      state.empleado = resultados.shift();
-      localStorage.setItem('fichajes_emp', JSON.stringify(state.empleado));
-    }
-    state.ubicaciones = resultados[0] || [];
-    state.config      = resultados[1] || {};
-  } catch(err) {
-    console.warn('Carga con datos cacheados:', err.message);
-  }
-
+  if (!yaAutenticado) state.empleado = await api('getEmpleado');
   const emp = state.empleado;
+  const [ubicaciones, config] = await Promise.all([api('getUbicaciones'), api('getConfig')]);
+  state.ubicaciones = ubicaciones || [];
+  state.config = config || {};
   actualizarUIEmpleado(emp);
 
   const locParam = tg?.initDataUnsafe?.start_param || new URLSearchParams(location.search).get('loc') || '';
   if (locParam) {
     state.ubicacion = state.ubicaciones.find(u => u.NFC_Param === locParam || u.ID_Ubicacion === locParam) || null;
-    if (state.ubicacion) {
-      const el = document.getElementById('fichar-ubicacion');
-      if (el) el.textContent = '📍 ' + state.ubicacion.Nombre;
-    }
+    const subEl = document.getElementById('fichar-ubicacion');
+    if (state.ubicacion && subEl) subEl.textContent = '📍 ' + state.ubicacion.Nombre;
   }
 
-  // Actualizar estado en background (no bloquea)
-  refreshEstado(true);
-  // Mostrar pantalla si no se hizo ya con caché
-  if (!empCacheado) {
-    ocultarPantallas();
-    document.getElementById('screen-fichar')?.classList.add('active');
-    setupOnce();
-    iniciarReloj();
-    setupNavegacion();
+  // FIX: cargar estado ANTES de mostrar pantalla → no aparece "0 fichajes"
+  await refreshEstado();
+
+  ocultarPantallas();
+  document.getElementById('screen-fichar')?.classList.add('active');
+  setupOnce();
+  iniciarReloj();
+  setupNavegacion();
+
+  // Botón alarma: visible solo en Android
+  const btnAlarma = document.getElementById('btn-alarma');
+  if (btnAlarma) btnAlarma.style.display = IS_IOS ? 'none' : '';
+
+  if (emp.Rol === 'admin') {
+    document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
   }
-  if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
-  if (tg) ajustarAlturaViewport();
-  // Sincronizar cola offline si hay conexión
-  sincronizarColaOffline();
 }
 
-// ── SETUP EVENTOS ─────────────────────────────────────────────────
+// ── SETUP EVENTOS (solo una vez) ──────────────────────────────────
 function setupOnce() {
   if (window.__fichajesSetupDone) return;
   window.__fichajesSetupDone = true;
 
-  // Botón fichar principal
-  document.getElementById('btn-fichar')?.addEventListener('click', () => {
-    desbloquearAudio(); vibrarCorto(); prepararFichaje(false);
-  });
-
-  // Botón alarma siempre visible
-  document.getElementById('btn-alarma')?.addEventListener('click', () => {
-    desbloquearAudio(); vibrarCorto(); abrirModalAlarma();
-  });
-
-  // Fichaje manual
+  document.getElementById('btn-fichar')?.addEventListener('click', () => prepararFichaje(false));
+  document.getElementById('btn-alarma')?.addEventListener('click', iniciarTimerDescanso);
   document.getElementById('btn-manual')?.addEventListener('click', abrirFichajeManual);
 
-  // Modal confirmar
-  document.getElementById('modal-cancel')?.addEventListener('click', () =>
-    document.getElementById('modal-confirmar')?.classList.add('hidden'));
+  document.getElementById('modal-cancel')?.addEventListener('click', () => document.getElementById('modal-confirmar')?.classList.add('hidden'));
   document.getElementById('modal-confirm')?.addEventListener('click', async () => {
-    desbloquearAudio(); vibrarCorto();
     await ejecutarFichaje({ comentario: document.getElementById('modal-comentario')?.value?.trim() || '' });
   });
 
-  // Modal manual
-  document.getElementById('manual-cancel')?.addEventListener('click', () =>
-    document.getElementById('modal-manual')?.classList.add('hidden'));
-  document.getElementById('manual-confirm')?.addEventListener('click', () => {
-    vibrarCorto(); enviarFichajeManual();
-  });
+  document.getElementById('manual-cancel')?.addEventListener('click', () => document.getElementById('modal-manual')?.classList.add('hidden'));
+  document.getElementById('manual-confirm')?.addEventListener('click', enviarFichajeManual);
 
-  // Modal alarma — bloque Android
   document.getElementById('btn-volver-fichar')?.addEventListener('click', () => {
-    detenerAlarma();
+    clearInterval(state.timerInterval);
     document.getElementById('modal-alarma')?.classList.add('hidden');
     prepararFichaje(false);
   });
   document.getElementById('btn-cancelar-timer')?.addEventListener('click', () => {
-    detenerAlarma();
+    clearInterval(state.timerInterval);
     document.getElementById('modal-alarma')?.classList.add('hidden');
   });
 
-  // Modal alarma — bloque iOS
-  document.getElementById('btn-siri')?.addEventListener('click', lanzarAtajoSiri);
-  document.getElementById('btn-volver-fichar-ios')?.addEventListener('click', () => {
-    detenerAlarma();
-    document.getElementById('modal-alarma')?.classList.add('hidden');
-    prepararFichaje(false);
-  });
-  document.getElementById('btn-cancelar-timer-ios')?.addEventListener('click', () => {
-    detenerAlarma();
-    document.getElementById('modal-alarma')?.classList.add('hidden');
-  });
-  document.getElementById('btn-como-instalar')?.addEventListener('click', () =>
-    document.getElementById('modal-siri-instrucciones')?.classList.remove('hidden'));
-  document.getElementById('btn-cerrar-instrucciones')?.addEventListener('click', () =>
-    document.getElementById('modal-siri-instrucciones')?.classList.add('hidden'));
-
-  // Sidebar
-  document.getElementById('btn-menu')?.addEventListener('click', abrirSidebar);
   document.getElementById('sidebar-overlay')?.addEventListener('click', cerrarSidebar);
+  document.getElementById('btn-menu')?.addEventListener('click', abrirSidebar);
 }
 
 // ── NAVEGACIÓN ────────────────────────────────────────────────────
@@ -361,43 +165,23 @@ function mostrarPantalla(view) {
   if (view === 'empleados')    cargarEmpleados();
   if (view === 'ubicaciones')  cargarUbicaciones();
   if (view === 'incidencias')  cargarIncidencias();
-  if (tg) ajustarAlturaViewport();
 }
 
-function abrirSidebar()  {
-  document.getElementById('sidebar')?.classList.remove('hidden');
-  document.getElementById('sidebar-overlay')?.classList.remove('hidden');
-}
-function cerrarSidebar() {
-  document.getElementById('sidebar')?.classList.add('hidden');
-  document.getElementById('sidebar-overlay')?.classList.add('hidden');
-}
+function abrirSidebar()  { document.getElementById('sidebar')?.classList.remove('hidden'); document.getElementById('sidebar-overlay')?.classList.remove('hidden'); }
+function cerrarSidebar() { document.getElementById('sidebar')?.classList.add('hidden');    document.getElementById('sidebar-overlay')?.classList.add('hidden'); }
 
 // ── UI EMPLEADO ───────────────────────────────────────────────────
 function actualizarUIEmpleado(emp) {
   const ini = (emp.Nombre_Completo || '').split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase();
-  ['fichar-avatar','sidebar-avatar'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ini; });
-  ['fichar-nombre','sidebar-name'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = emp.Nombre_Completo || ''; });
+  ['fichar-avatar', 'sidebar-avatar'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ini; });
+  ['fichar-nombre', 'sidebar-name'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = emp.Nombre_Completo || ''; });
   const role = document.getElementById('sidebar-role'); if (role) role.textContent = emp.Rol || '';
 }
 
 // ── ESTADO Y FICHAJE ──────────────────────────────────────────────
-async function refreshEstado(background = false) {
-  // Si tenemos estado cacheado y es background, mostrar inmediatamente
-  const cacheado = localStorage.getItem('fichajes_estado');
-  if (cacheado && !state.estadoHoy) {
-    try { state.estadoHoy = JSON.parse(cacheado); actualizarUIFichaje(); actualizarBtnAlarma(); } catch(e) {}
-  }
-  // Actualizar desde red (en background no bloquea)
-  try {
-    const nuevo = await api('getEstado');
-    state.estadoHoy = nuevo;
-    localStorage.setItem('fichajes_estado', JSON.stringify(nuevo));
-    actualizarUIFichaje();
-    actualizarBtnAlarma();
-  } catch(e) {
-    if (!background) console.warn('getEstado falló:', e.message);
-  }
+async function refreshEstado() {
+  state.estadoHoy = await api('getEstado');
+  actualizarUIFichaje();
 }
 
 function actualizarUIFichaje() {
@@ -412,149 +196,99 @@ function actualizarUIFichaje() {
   if (btnText) btnText.textContent = 'Registrar ' + (s.proximoTipo || 'ENTRADA');
 }
 
-function actualizarBtnAlarma() {
-  const btn = document.getElementById('btn-alarma'); if (!btn) return;
-  btn.classList.remove('hidden');
-  if (state.alarmaActiva) {
-    btn.textContent = '⏱ Alarma activa';
-    btn.classList.add('alarma-activa');
-  } else {
-    btn.textContent = '⏱ Alarma';
-    btn.classList.remove('alarma-activa');
-  }
-}
-
 async function prepararFichaje(autoConfirm) {
-  // Usar estado local sin esperar red — modal aparece instantáneo
+  await refreshEstado();
   const confirmar = state.empleado?.Confirmar_Fichaje !== 'false';
   if (autoConfirm || !confirmar) return ejecutarFichaje({ comentario: '' });
+
   const tipo = state.estadoHoy?.proximoTipo || 'ENTRADA';
   document.getElementById('modal-icon').textContent = tipo === 'ENTRADA' ? '🟢' : '🔴';
   document.getElementById('modal-titulo').textContent = 'Confirmar fichaje';
   document.getElementById('modal-subtitulo').textContent = tipo + ' — ' + horaActual();
+
+  // Tiempo acumulado solo en SALIDA
   const resumen = document.getElementById('modal-resumen-horas');
   if (tipo === 'SALIDA' && resumen) {
-    const horas = calcularHorasDia(state.estadoHoy?.fichajesHoy || []);
+    const horasAcum = calcularHorasDia(state.estadoHoy?.fichajesHoy || []);
     resumen.classList.remove('hidden');
-    document.getElementById('resumen-valor').textContent = horas || '—';
-  } else if (resumen) resumen.classList.add('hidden');
+    document.getElementById('resumen-valor').textContent = horasAcum || '—';
+    const lbl = document.getElementById('resumen-label');
+    if (lbl) lbl.textContent = 'Tiempo trabajado hoy';
+  } else if (resumen) {
+    resumen.classList.add('hidden');
+  }
+
   document.getElementById('modal-comentario').value = '';
   document.getElementById('modal-confirmar')?.classList.remove('hidden');
 }
 
 async function ejecutarFichaje({ comentario }) {
-  const datosFichaje = {
-    comentario,
-    ubicacionId:     state.ubicacion?.ID_Ubicacion || '',
-    ubicacionNombre: state.ubicacion?.Nombre || 'Manual',
-    metodo: state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user ? 'MINI_APP' : 'WEB'),
-    fecha: fechaHoy(),
-    hora:  horaActual()
-  };
-
-  // Confirmación inmediata (optimista)
-  beepCorto();
-  vibrarCorto();
-  const tipoEsperado = state.estadoHoy?.proximoTipo || 'ENTRADA';
-  toast('✅ ' + tipoEsperado + ' a las ' + datosFichaje.hora, 'ok');
-  document.getElementById('modal-confirmar')?.classList.add('hidden');
-
-  // Actualizar UI localmente sin esperar la red
-  const fichajesHoy = state.estadoHoy?.totalFichajesHoy || 0;
-  const nuevoTotal = fichajesHoy + 1;
-  if (state.estadoHoy) {
-    state.estadoHoy.proximoTipo = tipoEsperado === 'ENTRADA' ? 'SALIDA' : 'ENTRADA';
-    state.estadoHoy.totalFichajesHoy = nuevoTotal;
-  }
-  actualizarUIFichaje();
-
-  // Alarma automática solo en la 1ª SALIDA del día (2º fichaje)
-  if (tipoEsperado === 'SALIDA' && nuevoTotal === 2) abrirModalAlarma();
-
-  // Enviar a Apps Script (con fallback offline)
   try {
-    const res = await api('fichar', datosFichaje);
+    const res = await api('fichar', {
+      comentario,
+      ubicacionId:     state.ubicacion?.ID_Ubicacion || '',
+      ubicacionNombre: state.ubicacion?.Nombre || 'Manual',
+      metodo: state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user ? 'MINI_APP' : 'WEB')
+    });
     if (res.ok) {
-      // Sincronizado — refrescar estado real
+      document.getElementById('modal-confirmar')?.classList.add('hidden');
       await refreshEstado();
-      mostrarIndicadorSync(false);
+
+      if (res.tipo === 'SALIDA') {
+        // FIX: calcular horas acumuladas del día tras la salida
+        const horasTotal = calcularHorasDia(state.estadoHoy?.fichajesHoy || []);
+        toast('🔴 SALIDA ' + res.hora + (horasTotal ? ' · ' + horasTotal + ' hoy' : ''), 'ok');
+        if (!IS_IOS) iniciarTimerDescanso();
+      } else {
+        toast('🟢 ENTRADA ' + res.hora, 'ok');
+      }
     }
-  } catch(err) {
-    // Sin conexión → guardar en cola offline
-    guardarEnColaOffline(datosFichaje, tipoEsperado);
-    toast('📶 Sin conexión — fichaje guardado localmente', 'warning');
+  } catch (err) {
+    toast('❌ ' + err.message, 'error');
   }
 }
 
 // ── FICHAJE MANUAL ────────────────────────────────────────────────
 function abrirFichajeManual() {
-  document.getElementById('manual-fecha').value    = fechaHoy();
-  document.getElementById('manual-hora').value     = horaActual();
+  document.getElementById('manual-fecha').value = fechaHoy();
+  document.getElementById('manual-hora').value  = horaActual();
   document.getElementById('manual-comentario').value = '';
   document.getElementById('modal-manual')?.classList.remove('hidden');
 }
 
 async function enviarFichajeManual() {
-  const fecha      = document.getElementById('manual-fecha')?.value;
-  const hora       = document.getElementById('manual-hora')?.value;
+  const fecha     = document.getElementById('manual-fecha')?.value;
+  const hora      = document.getElementById('manual-hora')?.value;
   const comentario = document.getElementById('manual-comentario')?.value?.trim() || '';
   if (!fecha || !hora) { toast('Indica fecha y hora', 'error'); return; }
   try {
     const res = await api('fichar', { fecha, hora, comentario, ubicacionId: '', ubicacionNombre: 'Manual', metodo: 'MANUAL' });
     if (res.ok) {
-      beepCorto();
       toast('✅ ' + res.tipo + ' manual registrada', 'ok');
       document.getElementById('modal-manual')?.classList.add('hidden');
       await refreshEstado();
     }
-  } catch(err) { toast('❌ ' + err.message, 'error'); }
+  } catch (err) {
+    toast('❌ ' + err.message, 'error');
+  }
 }
 
-// ── ALARMA ────────────────────────────────────────────────────────
-function abrirModalAlarma() {
+// ── TIMER DESCANSO (solo Android) ─────────────────────────────────
+function iniciarTimerDescanso() {
+  if (IS_IOS) return;
   const mins = parseInt(state.empleado?.Alarma_Descanso || state.config?.ALARMA_DESCANSO || '25', 10);
-  const label = document.getElementById('timer-label');
-  if (label) label.textContent = 'Tiempo de descanso · ' + mins + ' min';
-
-  // Opción A: siempre usar bloque Android (contador + sonido Web Audio)
-  document.getElementById('alarma-android')?.classList.remove('hidden');
-  document.getElementById('alarma-ios')?.classList.add('hidden');
-
-  // Actualizar display inicial
   state.timerSeconds = mins * 60;
-  actualizarTimerDisplay();
-
   document.getElementById('modal-alarma')?.classList.remove('hidden');
-
-  // En Android: iniciar timer automáticamente
-  // En iOS: el timer visual corre pero la alarma real la gestiona Siri
-  iniciarTimer(mins);
-}
-
-function iniciarTimer(mins) {
-  detenerAlarma();
-  state.timerSeconds = mins * 60;
-  state.alarmaActiva = true;
-  actualizarBtnAlarma();
-  activarWakeLock();
+  clearInterval(state.timerInterval);
   actualizarTimerDisplay();
   state.timerInterval = setInterval(() => {
     state.timerSeconds--;
     actualizarTimerDisplay();
     if (state.timerSeconds <= 0) {
-      detenerAlarma();
-      alarmaFinal();
-      toast('⏰ ¡Descanso terminado! Hora de volver.', 'warning');
+      clearInterval(state.timerInterval);
+      toast('⏰ ¡Hora de volver!', 'warning');
     }
   }, 1000);
-}
-
-function detenerAlarma() {
-  clearInterval(state.timerInterval);
-  pararSonidoAlarma();
-  state.alarmaActiva = false;
-  liberarWakeLock();
-  actualizarBtnAlarma();
 }
 
 function actualizarTimerDisplay() {
@@ -564,16 +298,21 @@ function actualizarTimerDisplay() {
   el.textContent = m + ':' + s;
 }
 
-// ── SIRI SHORTCUTS ────────────────────────────────────────────────
-function lanzarAtajoSiri() {
-  const mins = parseInt(state.empleado?.Alarma_Descanso || '25', 10);
-  const url = 'shortcuts://run-shortcut?name=Alarma%20Fichajes&input=' + mins;
-  // tg.openLink permite esquemas externos desde el webview de Telegram iOS
-  if (tg && tg.openLink) {
-    tg.openLink(url);
-  } else {
-    window.open(url, '_blank');
+// ── CÁLCULO HORAS (suma todos los pares ENTRADA/SALIDA del día) ────
+function calcularHorasDia(fichajes) {
+  if (!Array.isArray(fichajes) || fichajes.length < 2) return null;
+  const ord = [...fichajes].sort((a, b) => (a.Hora || '').localeCompare(b.Hora || ''));
+  let mins = 0;
+  for (let i = 0; i < ord.length - 1; i++) {
+    if (ord[i].Tipo === 'ENTRADA' && ord[i + 1]?.Tipo === 'SALIDA') {
+      const [hE, mE] = (ord[i].Hora || '0:0').split(':').map(Number);
+      const [hS, mS] = (ord[i + 1].Hora || '0:0').split(':').map(Number);
+      const diff = (hS * 60 + mS) - (hE * 60 + mE);
+      if (diff > 0) mins += diff;
+    }
   }
+  if (mins <= 0) return null;
+  return Math.floor(mins / 60) + 'h' + (mins % 60 ? ' ' + mins % 60 + 'm' : '');
 }
 
 // ── MIS FICHAJES ──────────────────────────────────────────────────
@@ -608,7 +347,7 @@ async function cargarMisFichajes() {
         </div>${filas}
       </div>`;
     }).join('');
-  } catch(err) {
+  } catch (err) {
     lista.innerHTML = '<div class="empty-state error">Error: ' + err.message + '</div>';
   }
 }
@@ -617,7 +356,7 @@ async function cargarMisFichajes() {
 async function cargarDashboard() {
   try {
     const año = new Date().getFullYear();
-    const dashAño = document.getElementById('dash-año'); if (dashAño) dashAño.textContent = año;
+    const añoEl = document.getElementById('dash-año'); if (añoEl) añoEl.textContent = año;
     const resumen = await api('getResumen', { año });
     const obj  = parseInt(state.empleado?.Horas_Anuales || 1770);
     const real = resumen.horasRealizadas || 0;
@@ -625,16 +364,16 @@ async function cargarDashboard() {
     const barra = document.getElementById('dash-barra-anual'); if (barra) barra.style.width = pct + '%';
     const hReal = document.getElementById('dash-horas-real'); if (hReal) hReal.textContent = real + 'h';
     const hObj  = document.getElementById('dash-horas-obj');  if (hObj)  hObj.textContent  = '/ ' + obj + 'h';
-    const dif   = real - obj;
+    const dif = real - obj;
     const difEl = document.getElementById('dash-diferencial');
     if (difEl) { difEl.textContent = (dif >= 0 ? '+' : '') + dif + 'h'; difEl.className = 'diferencial ' + (dif >= 0 ? 'pos' : 'neg'); }
     if (resumen.semana) renderSemana(resumen.semana);
-  } catch(err) { console.error('Dashboard:', err); }
+  } catch (err) { console.error('Dashboard error:', err); }
 }
 
 function renderSemana(dias) {
   const cont = document.getElementById('semana-bars'); if (!cont) return;
-  const names = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
+  const names = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do'];
   const max = Math.max(...dias.map(d => d.minutos || 0), 1);
   cont.innerHTML = dias.map((d, i) => {
     const pct = Math.round(((d.minutos || 0) / max) * 100);
@@ -663,25 +402,27 @@ async function cargarEmpleados() {
         </div>
         <button class="btn btn-sm btn-ghost" onclick="editarEmpleado('${emp.ID_Empleado}')">✏️</button>
       </div>`).join('') || '<div class="empty-state">Sin empleados</div>';
-    document.getElementById('btn-nuevo-empleado').onclick = () => abrirFormEmpleado(null);
-  } catch(err) { lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>'; }
+    document.getElementById('btn-nuevo-empleado')?.addEventListener('click', () => abrirFormEmpleado(null));
+  } catch (err) {
+    lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>';
+  }
 }
 
 function abrirFormEmpleado(emp) {
-  document.getElementById('emp-form-titulo').textContent  = emp ? 'Editar Empleado' : 'Nuevo Empleado';
-  document.getElementById('emp-id').value           = emp?.ID_Empleado || '';
-  document.getElementById('emp-nombre').value       = emp?.Nombre_Completo || '';
-  document.getElementById('emp-numero').value       = emp?.Numero_Empleado || '';
-  document.getElementById('emp-email').value        = emp?.Email || '';
-  document.getElementById('emp-tgid').value         = emp?.Telegram_ID || '';
-  document.getElementById('emp-rol').value          = emp?.Rol || 'empleado';
-  document.getElementById('emp-notif').value        = emp?.Notificaciones || 'privado';
-  document.getElementById('emp-horas').value        = emp?.Horas_Anuales || '1770';
-  document.getElementById('emp-alarma').value       = emp?.Alarma_Descanso || '25';
-  document.getElementById('emp-confirmar').value    = emp?.Confirmar_Fichaje || 'true';
+  document.getElementById('emp-form-titulo').textContent = emp ? 'Editar Empleado' : 'Nuevo Empleado';
+  document.getElementById('emp-id').value        = emp?.ID_Empleado || '';
+  document.getElementById('emp-nombre').value    = emp?.Nombre_Completo || '';
+  document.getElementById('emp-numero').value    = emp?.Numero_Empleado || '';
+  document.getElementById('emp-email').value     = emp?.Email || '';
+  document.getElementById('emp-tgid').value      = emp?.Telegram_ID || '';
+  document.getElementById('emp-rol').value       = emp?.Rol || 'empleado';
+  document.getElementById('emp-notif').value     = emp?.Notificaciones || 'privado';
+  document.getElementById('emp-horas').value     = emp?.Horas_Anuales || '1770';
+  document.getElementById('emp-alarma').value    = emp?.Alarma_Descanso || '25';
+  document.getElementById('emp-confirmar').value = emp?.Confirmar_Fichaje || 'true';
   document.getElementById('modal-empleado')?.classList.remove('hidden');
-  document.getElementById('emp-cancel').onclick = () => document.getElementById('modal-empleado')?.classList.add('hidden');
-  document.getElementById('emp-save').onclick   = guardarEmpleadoForm;
+  document.getElementById('emp-cancel').onclick  = () => document.getElementById('modal-empleado')?.classList.add('hidden');
+  document.getElementById('emp-save').onclick    = guardarEmpleadoForm;
 }
 
 function editarEmpleado(id) {
@@ -706,7 +447,7 @@ async function guardarEmpleadoForm() {
     toast('✅ Empleado guardado', 'ok');
     document.getElementById('modal-empleado')?.classList.add('hidden');
     await cargarEmpleados();
-  } catch(err) { toast('❌ ' + err.message, 'error'); }
+  } catch (err) { toast('❌ ' + err.message, 'error'); }
 }
 
 // ── ADMIN: UBICACIONES ────────────────────────────────────────────
@@ -725,7 +466,7 @@ async function cargarUbicaciones() {
           </div>
         </div>
       </div>`).join('') || '<div class="empty-state">Sin ubicaciones</div>';
-  } catch(err) { lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>'; }
+  } catch (err) { lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>'; }
 }
 
 // ── INCIDENCIAS ───────────────────────────────────────────────────
@@ -746,13 +487,11 @@ async function cargarIncidencias() {
         </div>
         <span class="badge ${inc.Estado === 'resuelta' ? 'ok' : 'warn'}">${inc.Estado}</span>
       </div>`).join('');
-  } catch(err) { lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>'; }
+  } catch (err) { lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>'; }
 }
 
 // ── UTILIDADES ────────────────────────────────────────────────────
-function ocultarPantallas() {
-  document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
-}
+function ocultarPantallas() { document.querySelectorAll('.screen').forEach(el => el.classList.remove('active')); }
 
 function mostrarErrorInicio(msg) {
   ocultarPantallas();
@@ -772,119 +511,31 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function horaActual() {
   const n = new Date();
-  return String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0');
+  return String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0');
 }
 
 function fechaHoy() {
   const n = new Date();
-  return n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0');
+  return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
 }
 
 function formatearFecha(str) {
   if (!str) return '';
   const [y, m, d] = str.split('-').map(Number);
-  return new Date(y, m-1, d).toLocaleDateString('es-ES', { weekday:'short', day:'numeric', month:'short' });
-}
-
-function calcularHorasDia(fichajes) {
-  if (!Array.isArray(fichajes) || fichajes.length < 2) return null;
-  const ord = [...fichajes].sort((a,b) => (a.Hora||'').localeCompare(b.Hora||''));
-  let mins = 0;
-  for (let i = 0; i < ord.length - 1; i += 2) {
-    if (ord[i].Tipo === 'ENTRADA' && ord[i+1]?.Tipo === 'SALIDA') {
-      const [hE,mE] = (ord[i].Hora  ||'0:0').split(':').map(Number);
-      const [hS,mS] = (ord[i+1].Hora||'0:0').split(':').map(Number);
-      const diff = (hS*60+mS) - (hE*60+mE);
-      if (diff > 0) mins += diff;
-    }
-  }
-  if (mins <= 0) return null;
-  return Math.floor(mins/60) + 'h' + (mins%60 > 0 ? ' ' + mins%60 + 'm' : '');
+  return new Date(y, m - 1, d).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 function iniciarReloj() {
   const tick = () => {
     const now = new Date();
     const t = document.getElementById('clock-time');
-    if (t) t.textContent = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+    if (t) t.textContent = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     const d = document.getElementById('clock-date');
-    if (d) d.textContent = now.toLocaleDateString('es-ES', { weekday:'long', day:'numeric', month:'long' });
+    if (d) d.textContent = now.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
   };
   tick();
   clearInterval(window.__clockInt);
   window.__clockInt = setInterval(tick, 1000);
 }
-
-// ── CACHÉ LOCAL ───────────────────────────────────────────────────
-function cargarEmpleadoCache() {
-  try {
-    const raw = localStorage.getItem('fichajes_emp');
-    return raw ? JSON.parse(raw) : null;
-  } catch(e) { return null; }
-}
-
-function cargarEstadoCache() {
-  try {
-    const raw = localStorage.getItem('fichajes_estado');
-    return raw ? JSON.parse(raw) : null;
-  } catch(e) { return null; }
-}
-
-// ── COLA OFFLINE ─────────────────────────────────────────────────
-function cargarColaOffline() {
-  try {
-    const raw = localStorage.getItem('fichajes_cola');
-    state.colaOffline = raw ? JSON.parse(raw) : [];
-    mostrarIndicadorSync(state.colaOffline.length > 0);
-  } catch(e) { state.colaOffline = []; }
-}
-
-function guardarEnColaOffline(datos, tipo) {
-  state.colaOffline.push({ ...datos, tipo, timestamp: Date.now() });
-  localStorage.setItem('fichajes_cola', JSON.stringify(state.colaOffline));
-  mostrarIndicadorSync(true);
-}
-
-async function sincronizarColaOffline() {
-  if (!state.colaOffline.length) return;
-  const pendientes = [...state.colaOffline];
-  let sincronizados = 0;
-  for (const fichaje of pendientes) {
-    try {
-      await api('fichar', fichaje);
-      sincronizados++;
-      state.colaOffline = state.colaOffline.filter(f => f.timestamp !== fichaje.timestamp);
-      localStorage.setItem('fichajes_cola', JSON.stringify(state.colaOffline));
-    } catch(e) { break; } // Si falla, parar — seguirá en el próximo arranque
-  }
-  if (sincronizados > 0) {
-    toast('✅ ' + sincronizados + ' fichaje' + (sincronizados > 1 ? 's' : '') + ' sincronizado' + (sincronizados > 1 ? 's' : ''), 'ok');
-    mostrarIndicadorSync(false);
-    await refreshEstado();
-  }
-}
-
-function mostrarIndicadorSync(hayPendientes) {
-  const btn = document.getElementById('btn-fichar');
-  if (!btn) return;
-  const existing = document.getElementById('sync-indicator');
-  if (hayPendientes && !existing) {
-    const dot = document.createElement('span');
-    dot.id = 'sync-indicator';
-    dot.title = 'Fichajes pendientes de sincronizar';
-    dot.textContent = '🔄';
-    dot.style.cssText = 'position:absolute;top:-6px;right:-6px;font-size:14px;';
-    btn.style.position = 'relative';
-    btn.appendChild(dot);
-  } else if (!hayPendientes && existing) {
-    existing.remove();
-  }
-}
-
-// Intentar sincronizar cuando recupera conexión
-window.addEventListener('online', () => {
-  toast('📶 Conexión recuperada', 'ok');
-  sincronizarColaOffline();
-});
 
 window.api = api;
