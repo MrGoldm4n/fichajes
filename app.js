@@ -216,10 +216,15 @@ async function arrancarApp(yaAutenticado = false) {
   // Cargar cola offline guardada
   cargarColaOffline();
 
-  // Mostrar pantalla de fichar inmediatamente con datos cacheados si los hay
-  const empCacheado = state.empleado;
+  // ── PASO 1: mostrar pantalla inmediatamente con datos cacheados ──
+  const empCacheado = state.empleado || cargarEmpleadoCache();
+  const estadoCacheado = cargarEstadoCache();
   if (empCacheado) {
+    state.empleado = empCacheado;
+    if (estadoCacheado) { state.estadoHoy = estadoCacheado; }
     actualizarUIEmpleado(empCacheado);
+    actualizarUIFichaje();
+    actualizarBtnAlarma();
     ocultarPantallas();
     document.getElementById('screen-fichar')?.classList.add('active');
     setupOnce();
@@ -229,16 +234,18 @@ async function arrancarApp(yaAutenticado = false) {
     if (tg) ajustarAlturaViewport();
   }
 
-  // Cargar datos en paralelo (más rápido que en secuencia)
+  // ── PASO 2: actualizar datos desde red en paralelo (no bloquea la UI) ──
   try {
     const promesas = [api('getUbicaciones'), api('getConfig')];
     if (!yaAutenticado) promesas.unshift(api('getEmpleado'));
     const resultados = await Promise.all(promesas);
-    if (!yaAutenticado) { state.empleado = resultados.shift(); }
+    if (!yaAutenticado) {
+      state.empleado = resultados.shift();
+      localStorage.setItem('fichajes_emp', JSON.stringify(state.empleado));
+    }
     state.ubicaciones = resultados[0] || [];
     state.config      = resultados[1] || {};
   } catch(err) {
-    // Si falla la red, continuar con datos cacheados
     console.warn('Carga con datos cacheados:', err.message);
   }
 
@@ -254,20 +261,18 @@ async function arrancarApp(yaAutenticado = false) {
     }
   }
 
-  await refreshEstado();
-  // Solo hacer setup si no se hizo ya con datos cacheados
+  // Actualizar estado en background (no bloquea)
+  refreshEstado(true);
+  // Mostrar pantalla si no se hizo ya con caché
   if (!empCacheado) {
     ocultarPantallas();
     document.getElementById('screen-fichar')?.classList.add('active');
     setupOnce();
     iniciarReloj();
     setupNavegacion();
-    if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
-    if (tg) ajustarAlturaViewport();
-  } else {
-    actualizarUIFichaje();
-    if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
   }
+  if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+  if (tg) ajustarAlturaViewport();
   // Sincronizar cola offline si hay conexión
   sincronizarColaOffline();
 }
@@ -377,10 +382,22 @@ function actualizarUIEmpleado(emp) {
 }
 
 // ── ESTADO Y FICHAJE ──────────────────────────────────────────────
-async function refreshEstado() {
-  state.estadoHoy = await api('getEstado');
-  actualizarUIFichaje();
-  actualizarBtnAlarma();
+async function refreshEstado(background = false) {
+  // Si tenemos estado cacheado y es background, mostrar inmediatamente
+  const cacheado = localStorage.getItem('fichajes_estado');
+  if (cacheado && !state.estadoHoy) {
+    try { state.estadoHoy = JSON.parse(cacheado); actualizarUIFichaje(); actualizarBtnAlarma(); } catch(e) {}
+  }
+  // Actualizar desde red (en background no bloquea)
+  try {
+    const nuevo = await api('getEstado');
+    state.estadoHoy = nuevo;
+    localStorage.setItem('fichajes_estado', JSON.stringify(nuevo));
+    actualizarUIFichaje();
+    actualizarBtnAlarma();
+  } catch(e) {
+    if (!background) console.warn('getEstado falló:', e.message);
+  }
 }
 
 function actualizarUIFichaje() {
@@ -408,7 +425,7 @@ function actualizarBtnAlarma() {
 }
 
 async function prepararFichaje(autoConfirm) {
-  await refreshEstado();
+  // Usar estado local sin esperar red — modal aparece instantáneo
   const confirmar = state.empleado?.Confirmar_Fichaje !== 'false';
   if (autoConfirm || !confirmar) return ejecutarFichaje({ comentario: '' });
   const tipo = state.estadoHoy?.proximoTipo || 'ENTRADA';
@@ -796,6 +813,21 @@ function iniciarReloj() {
   tick();
   clearInterval(window.__clockInt);
   window.__clockInt = setInterval(tick, 1000);
+}
+
+// ── CACHÉ LOCAL ───────────────────────────────────────────────────
+function cargarEmpleadoCache() {
+  try {
+    const raw = localStorage.getItem('fichajes_emp');
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function cargarEstadoCache() {
+  try {
+    const raw = localStorage.getItem('fichajes_estado');
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
 }
 
 // ── COLA OFFLINE ─────────────────────────────────────────────────
