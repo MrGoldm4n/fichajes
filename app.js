@@ -233,12 +233,34 @@ function actualizarUIFichaje() {
 // ── ANILLO DINÁMICO ───────────────────────────────────────────────
 function iniciarAnillo() {
   clearInterval(state.ringInterval);
-  actualizarAnillo(); // dibujar inmediatamente
-  // Si está fichado (entrada sin cerrar), actualizar cada 10 segundos
+  actualizarAnillo(); // dibujar anillo inmediatamente
+
   const s = state.estadoHoy;
-  if (s && s.proximoTipo === 'SALIDA') {
-    state.ringInterval = setInterval(actualizarAnillo, 10000);
+  const enCurso = s && s.proximoTipo === 'SALIDA';
+
+  if (enCurso) {
+    // Contador de texto cada segundo (liviano)
+    // Anillo SVG cada 10 segundos (más pesado visualmente)
+    state.ringInterval = setInterval(() => {
+      actualizarContador();
+      // cada 10 ticks también actualiza el anillo completo
+      state._ringTick = (state._ringTick || 0) + 1;
+      if (state._ringTick % 10 === 0) actualizarAnillo();
+    }, 1000);
   }
+}
+
+function actualizarContador() {
+  const s      = state.estadoHoy;
+  const emp    = state.empleado;
+  if (!emp) return;
+  const fichajes = (s && s.fichajesHoy) ? s.fichajesHoy : [];
+  const minsReal = calcularMinsAcumulados(fichajes);
+  const enCurso  = s && s.proximoTipo === 'SALIDA';
+  const valorEl  = document.getElementById('trabajado-valor');
+  const estadoEl = document.getElementById('trabajado-estado');
+  if (valorEl) valorEl.textContent = minsReal > 0 ? formatMins(minsReal) : '—';
+  if (estadoEl) estadoEl.textContent = enCurso ? '▶' : (minsReal > 0 ? '⏸' : '');
 }
 
 function actualizarAnillo() {
@@ -251,44 +273,34 @@ function actualizarAnillo() {
   const minsBase    = jornadaBase * 60;
   const minsObj     = objetivo * 60;
 
-  // Calcular minutos trabajados hoy (acumulados)
-  const fichajes  = (s && s.fichajesHoy) ? s.fichajesHoy : [];
-  let minsReal    = calcularMinsAcumulados(fichajes);
-  const enCurso   = s && s.proximoTipo === 'SALIDA'; // hay entrada abierta
+  const fichajes = (s && s.fichajesHoy) ? s.fichajesHoy : [];
+  const minsReal = calcularMinsAcumulados(fichajes);
+  const enCurso  = s && s.proximoTipo === 'SALIDA';
 
-  // Contador en vivo
+  // Actualizar contador también aquí (sincronía)
   const valorEl  = document.getElementById('trabajado-valor');
   const estadoEl = document.getElementById('trabajado-estado');
   if (valorEl) valorEl.textContent = minsReal > 0 ? formatMins(minsReal) : '—';
   if (estadoEl) estadoEl.textContent = enCurso ? '▶' : (minsReal > 0 ? '⏸' : '');
 
-  // Anillo: el total del anillo es max(objetivo, real) para que no se corte
   const minsMax = Math.max(minsObj, minsReal, 1);
   const wrap    = document.querySelector('.ring-wrap');
   if (wrap) { enCurso ? wrap.classList.add('fichado') : wrap.classList.remove('fichado'); }
 
-  // Calcular dashoffset para cada tramo
-  // Tramo base (azul): 0 → minsBase
-  const minsTramoBase  = Math.min(minsReal, minsBase);
-  const minsTramoVerde = minsReal > minsBase ? Math.min(minsReal - minsBase, minsObj - minsBase) : 0;
-  const minsTramoNaranja = minsReal > minsObj ? minsReal - minsObj : 0;
+  const minsTramoBase    = Math.min(minsReal, minsBase);
+  const minsTramoVerde   = minsReal > minsBase ? Math.min(minsReal - minsBase, minsObj - minsBase) : 0;
+  const minsTramoNaranja = minsReal > minsObj  ? minsReal - minsObj : 0;
 
   function calcOffset(tramo, desde) {
-    // stroke-dasharray: longitud_tramo, resto
-    // stroke-dashoffset: desplazamiento desde el inicio
     const longitud = (tramo / minsMax) * CIRC;
     const offset   = (desde / minsMax) * CIRC;
-    // dashoffset positivo = el tramo empieza en esa posición del arco (negativo se clampea a 0 en SVG)
+    // dashoffset positivo = el tramo empieza en esa posición del arco
     return { dasharray: longitud + ' ' + CIRC, dashoffset: offset };
   }
 
-  const base    = calcOffset(minsTramoBase,    0);
-  const verde   = calcOffset(minsTramoVerde,   minsBase);
-  const naranja = calcOffset(minsTramoNaranja, minsObj);
-
-  setRingSegment('ring-base',  base);
-  setRingSegment('ring-bolsa', verde);
-  setRingSegment('ring-extra', naranja);
+  setRingSegment('ring-base',  calcOffset(minsTramoBase,    0));
+  setRingSegment('ring-bolsa', calcOffset(minsTramoVerde,   minsBase));
+  setRingSegment('ring-extra', calcOffset(minsTramoNaranja, minsObj));
 }
 
 function setRingSegment(id, props) {
@@ -417,7 +429,8 @@ async function enviarFichajeManual() {
 // ── TIMER DESCANSO (solo Android) ─────────────────────────────────
 function iniciarTimerDescanso() {
   if (isIOS) return;
-  const mins = parseInt(state.empleado?.Alarma_Descanso || state.config?.ALARMA_DESCANSO || '25', 10);
+  const raw  = parseInt(state.empleado?.Alarma_Descanso || state.config?.ALARMA_DESCANSO || '25', 10);
+  const mins = isNaN(raw) || raw <= 0 ? 25 : raw;
   state.timerSeconds = mins * 60;
   document.getElementById('modal-alarma')?.classList.remove('hidden');
   clearInterval(state.timerInterval);
