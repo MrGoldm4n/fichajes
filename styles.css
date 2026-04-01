@@ -1,4 +1,4 @@
-/* ── FICHAJES v0.5.3 — styles.css ── */
+/* ── FICHAJES v0.7.0 — styles.css ── */
 
 :root {
   --bg:        #0d0d1a;
@@ -25,12 +25,12 @@ html, body {
   font-size: 15px;
 }
 
-/* ── SCREENS ───────────────────────────────────────── */
+/* ── SCREENS ── */
 .screen { display: none; flex-direction: column; height: 100dvh; overflow: hidden; }
 .screen.active { display: flex; }
 .hidden { display: none !important; }
 
-/* ── SPLASH ─────────────────────────────────────────── */
+/* ── SPLASH ── */
 .splash-inner {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   height: 100%; gap: 16px;
@@ -42,7 +42,7 @@ html, body {
 @keyframes load  { from { width: 0 } to { width: 100% } }
 @keyframes pulse { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.08) } }
 
-/* ── LOGIN GOOGLE ───────────────────────────────────── */
+/* ── LOGIN ── */
 .login-container {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   height: 100%; gap: 20px; padding: 32px; text-align: center;
@@ -53,7 +53,7 @@ html, body {
 .login-status       { font-size: 14px; color: var(--text2); min-height: 20px; }
 .login-status.error { color: var(--red); }
 
-/* ── NO AUTH ─────────────────────────────────────────── */
+/* ── NO AUTH ── */
 .noauth-inner {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   height: 100%; gap: 12px; padding: 32px; text-align: center;
@@ -66,7 +66,7 @@ html, body {
   border-radius: var(--radius-sm); font-size: 12px; color: var(--text2);
 }
 
-/* ── AVATAR ──────────────────────────────────────────── */
+/* ── AVATAR ── */
 .avatar {
   width: 38px; height: 38px; border-radius: 50%; background: var(--accent);
   display: flex; align-items: center; justify-content: center;
@@ -75,7 +75,7 @@ html, body {
 .avatar.sm { width: 30px; height: 30px; font-size: 11px; }
 .avatar.lg { width: 48px; height: 48px; font-size: 17px; }
 
-/* ── TOP BAR ─────────────────────────────────────────── */
+/* ── TOP BAR ── */
 .top-bar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 16px; background: var(--bg2); border-bottom: 1px solid var(--border);
@@ -86,7 +86,7 @@ html, body {
 .top-sub   { font-size: 12px; color: var(--text2); }
 .icon-btn  { background: none; border: none; color: var(--text2); font-size: 22px; cursor: pointer; padding: 4px 8px; }
 
-/* ── SCREEN HEADER ───────────────────────────────────── */
+/* ── SCREEN HEADER ── */
 .screen-header {
   display: flex; align-items: center; gap: 10px;
   padding: 12px 16px; background: var(--bg2); border-bottom: 1px solid var(--border);
@@ -95,21 +95,69 @@ html, body {
 .screen-header h2 { font-size: 18px; font-weight: 600; flex: 1; }
 .back-btn { background: none; border: none; color: var(--text2); font-size: 26px; cursor: pointer; padding: 0 4px; }
 
-/* ── FICHAR CENTER ───────────────────────────────────── */
+/* ── FICHAR CENTER ── */
 .fichar-center {
   flex: 1; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 18px;
+  align-items: center; justify-content: center; gap: 14px;
 }
-.clock-ring {
-  width: 200px; height: 200px; border-radius: 50%;
-  border: 2px solid var(--border);
-  box-shadow: 0 0 40px rgba(79,142,247,.15);
+
+/* ── ANILLO SVG ── */
+.ring-wrap {
+  position: relative;
+  width: 220px; height: 220px;
   display: flex; align-items: center; justify-content: center;
 }
-.clock-inner { text-align: center; }
-.clock-time  { font-size: 42px; font-weight: 700; letter-spacing: 2px; }
-.clock-date  { font-size: 13px; color: var(--text2); margin-top: 2px; }
+.progress-ring {
+  position: absolute; top: 0; left: 0;
+  width: 220px; height: 220px;
+  transform: rotate(-90deg); /* empieza desde arriba */
+}
 
+/* Radio = 96, circunferencia = 2π×96 ≈ 603 */
+.ring-bg {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 8;
+}
+.ring-base, .ring-bolsa, .ring-extra {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 603;
+  stroke-dashoffset: 603; /* oculto por defecto */
+  transition: stroke-dashoffset 0.6s ease, stroke-dasharray 0.6s ease;
+}
+.ring-base  { stroke: var(--accent); }
+.ring-bolsa { stroke: var(--green); }
+.ring-extra { stroke: var(--orange); }
+
+/* Pulso cuando está fichado (clase añadida por JS) */
+.ring-wrap.fichado .ring-base,
+.ring-wrap.fichado .ring-bolsa {
+  filter: drop-shadow(0 0 6px rgba(79,142,247,.5));
+}
+
+/* Reloj dentro del anillo */
+.clock-inner {
+  position: relative; z-index: 1;
+  text-align: center;
+}
+.clock-time { font-size: 40px; font-weight: 700; letter-spacing: 2px; }
+.clock-date { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+/* ── CONTADOR EN VIVO ── */
+.trabajado-wrap {
+  display: flex; align-items: center; gap: 8px;
+}
+.trabajado-valor {
+  font-size: 22px; font-weight: 700; color: var(--text);
+  min-width: 80px; text-align: center;
+}
+.trabajado-estado {
+  font-size: 16px;
+}
+
+/* ── TIPO BADGE ── */
 .tipo-badge {
   background: rgba(46,204,113,.15); color: var(--green);
   border: 1px solid rgba(46,204,113,.3); border-radius: 99px;
@@ -118,8 +166,7 @@ html, body {
 .tipo-badge.salida { background: rgba(231,76,60,.15); color: var(--red); border-color: rgba(231,76,60,.3); }
 .fichar-count { font-size: 13px; color: var(--text2); }
 
-/* ── FICHAR ACTIONS ──────────────────────────────────── */
-/* Más grandes: padding generoso, font más grande, gap mayor */
+/* ── FICHAR ACTIONS ── */
 .fichar-actions {
   padding: 20px 16px 28px;
   display: flex; flex-direction: column; gap: 14px; flex-shrink: 0;
@@ -127,28 +174,25 @@ html, body {
 .actions-secundarias { display: flex; gap: 12px; width: 100%; }
 .actions-secundarias .btn { flex: 1; }
 
-/* ── BUTTONS ─────────────────────────────────────────── */
+/* ── BUTTONS ── */
 .btn {
   display: flex; align-items: center; justify-content: center; gap: 10px;
-  border-radius: var(--radius); border: none;
-  font-weight: 600; cursor: pointer; width: 100%;
+  padding: 18px 20px; border-radius: var(--radius); border: none;
+  font-size: 17px; font-weight: 600; cursor: pointer; width: 100%;
   transition: transform .1s, opacity .15s;
-  /* Tamaño base aumentado */
-  padding: 18px 20px;
-  font-size: 17px;
   min-height: 58px;
 }
 .btn:active        { transform: scale(.97); }
-.btn-fichar        { background: var(--green); color: #fff; font-size: 19px; min-height: 66px; }
+.btn:disabled      { opacity: .55; pointer-events: none; }
+.btn-fichar        { background: var(--green); color: #fff; }
 .btn-fichar.salida { background: var(--red); }
-/* Botones secundarios también más grandes pero algo menos que el principal */
-.btn-secondary     { background: var(--bg3); color: var(--text2); font-size: 16px; padding: 16px; min-height: 54px; }
+.btn-secondary     { background: var(--bg3); color: var(--text2); font-size: 15px; padding: 16px; min-height: 54px; }
 .btn-primary       { background: var(--accent); color: #fff; }
 .btn-ghost         { background: var(--bg3); color: var(--text2); }
-.btn-sm            { padding: 8px 14px; font-size: 13px; width: auto; min-height: auto; border-radius: var(--radius-sm); }
+.btn-sm            { padding: 8px 14px; font-size: 13px; width: auto; border-radius: var(--radius-sm); min-height: unset; }
 .btn-icon          { font-size: 22px; }
 
-/* ── MODALES ─────────────────────────────────────────── */
+/* ── MODALES ── */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100;
   display: flex; align-items: flex-end; justify-content: center;
@@ -172,11 +216,11 @@ html, body {
 .resumen-label { font-size: 12px; color: var(--text2); }
 .resumen-valor { font-size: 28px; font-weight: 700; color: var(--green); }
 
-/* ── TIMER ───────────────────────────────────────────── */
+/* ── TIMER ── */
 .timer-display { font-size: 72px; font-weight: 700; letter-spacing: 3px; color: var(--accent); }
 .timer-label   { color: var(--text2); font-size: 14px; }
 
-/* ── FIELDS ──────────────────────────────────────────── */
+/* ── FIELDS ── */
 .field-label    { font-size: 12px; color: var(--text2); font-weight: 500; }
 .field-label.mt { margin-top: 4px; }
 .mt             { margin-top: 8px; }
@@ -196,7 +240,7 @@ html, body {
 .textarea-field:focus { border-color: var(--accent); }
 .trimestres-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
-/* ── SIDEBAR ─────────────────────────────────────────── */
+/* ── SIDEBAR ── */
 .sidebar {
   position: fixed; left: 0; top: 0; bottom: 0; width: 260px; z-index: 200;
   background: var(--bg2); border-right: 1px solid var(--border);
@@ -221,26 +265,21 @@ html, body {
 .nav-item:hover, .nav-item.active { background: var(--bg3); color: var(--text); }
 .nav-sep { height: 1px; background: var(--border); margin: 8px 16px; }
 
-/* ── FILTER BAR ──────────────────────────────────────── */
+/* ── FILTER BAR ── */
 .filter-bar {
   padding: 12px 16px; background: var(--bg2);
   border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
 
-/* ── MIS FICHAJES ────────────────────────────────────── */
+/* ── MIS FICHAJES ── */
 .fichajes-lista { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
-
-.dia-card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); overflow: hidden;
-}
+.dia-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .dia-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; background: var(--bg3); border-bottom: 1px solid var(--border);
 }
 .dia-fecha { font-size: 13px; font-weight: 700; text-transform: capitalize; }
 .dia-horas { font-size: 13px; font-weight: 700; color: var(--accent); }
-
 .fichaje-row {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 14px; border-bottom: 1px solid var(--border);
@@ -252,15 +291,11 @@ html, body {
 .fichaje-ubi      { flex: 1; font-size: 13px; color: var(--text2); }
 .fichaje-nota     { font-size: 11px; color: var(--text2); font-style: italic; }
 
-/* ── DASHBOARD ───────────────────────────────────────── */
-.dashboard-scroll {
-  flex: 1; overflow-y: auto; padding: 12px 16px;
-  display: flex; flex-direction: column; gap: 12px;
-}
-.card           { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
-.card-label     { font-size: 12px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+/* ── DASHBOARD ── */
+.dashboard-scroll { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+.card          { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.card-label    { font-size: 12px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
 .card-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-
 .progress-bar-wrap { height: 8px; background: var(--bg3); border-radius: 99px; overflow: hidden; }
 .progress-bar      { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); border-radius: 99px; transition: width .5s; }
 .progress-stats    { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
@@ -268,7 +303,6 @@ html, body {
 .diferencial       { font-size: 14px; font-weight: 600; margin-left: auto; }
 .diferencial.pos   { color: var(--green); }
 .diferencial.neg   { color: var(--red); }
-
 .trimestres-grid      { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .trim-card            { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
 .trim-card.activo     { border-color: var(--accent); }
@@ -277,24 +311,15 @@ html, body {
 .trim-horas { font-size: 22px; font-weight: 700; }
 .trim-obj   { font-size: 11px; color: var(--text2); }
 
-/* ── SEMANA BARS ─────────────────────────────────────── */
-.semana-bars {
-  display: flex; align-items: flex-end; justify-content: space-around;
-  height: 90px; gap: 6px;
-}
-.semana-col {
-  flex: 1; display: flex; flex-direction: column;
-  align-items: center; gap: 4px; height: 100%; justify-content: flex-end;
-}
-.semana-bar-wrap {
-  flex: 1; width: 100%; display: flex; flex-direction: column;
-  align-items: center; justify-content: flex-end;
-}
+/* ── SEMANA BARS ── */
+.semana-bars { display: flex; align-items: flex-end; justify-content: space-around; height: 90px; gap: 6px; }
+.semana-col  { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+.semana-bar-wrap { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
 .semana-bar   { width: 100%; border-radius: 4px 4px 0 0; background: var(--accent); min-height: 2px; transition: height .4s; }
 .semana-label { font-size: 10px; color: var(--text2); }
 .semana-h     { font-size: 10px; color: var(--text2); }
 
-/* ── CALENDARIO ──────────────────────────────────────── */
+/* ── CALENDARIO ── */
 .calendario { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
 .cal-day-header { text-align: center; font-size: 10px; color: var(--text2); padding: 4px 0; }
 .cal-day {
@@ -308,7 +333,7 @@ html, body {
 .cal-day.ok  .cal-horas { color: var(--accent); }
 .cal-day.hoy .cal-horas { color: rgba(255,255,255,.8); }
 
-/* ── ADMIN LISTA ─────────────────────────────────────── */
+/* ── ADMIN ── */
 .lista-admin { flex: 1; overflow-y: auto; padding: 12px 16px; }
 .admin-card {
   display: flex; align-items: center; gap: 10px;
@@ -318,24 +343,19 @@ html, body {
 .admin-card-info { flex: 1; display: flex; align-items: center; gap: 10px; }
 .admin-card-name { font-weight: 600; font-size: 14px; }
 .admin-card-sub  { font-size: 12px; color: var(--text2); margin-top: 2px; }
-.nfc-url         { word-break: break-all; }
 
-/* ── BADGES ──────────────────────────────────────────── */
-.badge {
-  display: inline-block; padding: 2px 8px; border-radius: 99px;
-  font-size: 11px; font-weight: 700;
-}
+/* ── BADGES ── */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
 .badge.ok    { background: rgba(46,204,113,.15); color: var(--green); }
 .badge.warn  { background: rgba(243,156,18,.15);  color: var(--orange); }
 .badge.error { background: rgba(231,76,60,.15);   color: var(--red); }
 
-/* ── TOAST ───────────────────────────────────────────── */
+/* ── TOAST ── */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   background: var(--bg3); border: 1px solid var(--border);
   color: var(--text); padding: 12px 22px; border-radius: var(--radius);
-  font-size: 14px; z-index: 500; white-space: nowrap;
-  transition: opacity .3s;
+  font-size: 14px; z-index: 500; white-space: nowrap; transition: opacity .3s;
 }
 .toast.show    { opacity: 1; }
 .toast.hidden  { opacity: 0; pointer-events: none; }
@@ -343,12 +363,9 @@ html, body {
 .toast.error   { border-color: var(--red);    color: var(--red); }
 .toast.warning { border-color: var(--orange); color: var(--orange); }
 
-/* ── FAB BAR ─────────────────────────────────────────── */
-.fab-bar {
-  padding: 12px 16px; background: var(--bg2);
-  border-top: 1px solid var(--border); flex-shrink: 0;
-}
+/* ── FAB BAR ── */
+.fab-bar { padding: 12px 16px; background: var(--bg2); border-top: 1px solid var(--border); flex-shrink: 0; }
 
-/* ── EMPTY / ERROR STATE ─────────────────────────────── */
+/* ── EMPTY STATE ── */
 .empty-state       { text-align: center; color: var(--text2); padding: 40px 16px; font-size: 14px; }
 .empty-state.error { color: var(--red); }
