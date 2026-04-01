@@ -4,10 +4,6 @@
   <script src="https://accounts.google.com/gsi/client" async></script>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
-  <meta name="theme-color" content="#0d0d1a"/>
-  <meta name="apple-mobile-web-app-capable" content="yes"/>
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <meta name="apple-mobile-web-app-title" content="Fichajes"/>
   <title>Fichajes</title>
   <link rel="manifest" href="manifest.json"/>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -24,7 +20,7 @@
   </div>
 </div>
 
-<!-- LOGIN GOOGLE -->
+<!-- LOGIN -->
 <div id="screen-login" class="screen">
   <div class="login-container">
     <div class="login-logo">⏱</div>
@@ -46,7 +42,7 @@
   </div>
 </div>
 
-<!-- FICHAR -->
+<!-- PANTALLA: FICHAR -->
 <div id="screen-fichar" class="screen">
   <div class="top-bar">
     <div class="top-user">
@@ -59,12 +55,32 @@
     <button class="icon-btn" id="btn-menu">☰</button>
   </div>
   <div class="fichar-center">
-    <div class="clock-ring">
+
+    <!-- ANILLO SVG dinámico -->
+    <div class="ring-wrap">
+      <svg class="progress-ring" viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+        <!-- Fondo -->
+        <circle class="ring-bg" cx="110" cy="110" r="96"/>
+        <!-- Tramo azul: jornada base -->
+        <circle class="ring-base" id="ring-base" cx="110" cy="110" r="96"/>
+        <!-- Tramo verde: zona bolsa -->
+        <circle class="ring-bolsa" id="ring-bolsa" cx="110" cy="110" r="96"/>
+        <!-- Tramo naranja: extra -->
+        <circle class="ring-extra" id="ring-extra" cx="110" cy="110" r="96"/>
+      </svg>
+      <!-- Reloj dentro del anillo -->
       <div class="clock-inner">
         <div class="clock-time" id="clock-time">00:00</div>
         <div class="clock-date" id="clock-date">—</div>
       </div>
     </div>
+
+    <!-- Contador en vivo -->
+    <div class="trabajado-wrap">
+      <span class="trabajado-valor" id="trabajado-valor">—</span>
+      <span class="trabajado-estado" id="trabajado-estado"></span>
+    </div>
+
     <div class="tipo-badge" id="tipo-badge">ENTRADA</div>
     <div class="fichar-count" id="fichar-count">0 fichajes hoy</div>
   </div>
@@ -74,13 +90,13 @@
       <span id="btn-fichar-text">Registrar ENTRADA</span>
     </button>
     <div class="actions-secundarias">
-      <button class="btn btn-secondary" id="btn-alarma">⏱ Alarma</button>
-      <button class="btn btn-secondary" id="btn-manual">✏️ Manual</button>
+      <button class="btn btn-secondary hidden" id="btn-alarma">⏱ Alarma</button>
+      <button class="btn btn-secondary" id="btn-manual">✏️ Fichaje manual</button>
     </div>
   </div>
 </div>
 
-<!-- MIS FICHAJES -->
+<!-- PANTALLA: MIS FICHAJES -->
 <div id="screen-mis-fichajes" class="screen">
   <div class="screen-header with-back">
     <button class="back-btn" data-back="fichar">‹</button>
@@ -94,7 +110,7 @@
   </div>
 </div>
 
-<!-- DASHBOARD -->
+<!-- PANTALLA: DASHBOARD -->
 <div id="screen-dashboard" class="screen">
   <div class="screen-header with-back">
     <button class="back-btn" data-back="fichar">‹</button>
@@ -126,7 +142,7 @@
   </div>
 </div>
 
-<!-- EMPLEADOS (admin) -->
+<!-- PANTALLA: EMPLEADOS -->
 <div id="screen-empleados" class="screen admin-only hidden">
   <div class="screen-header with-back">
     <button class="back-btn" data-back="fichar">‹</button>
@@ -136,7 +152,7 @@
   <div id="lista-empleados" class="lista-admin"></div>
 </div>
 
-<!-- UBICACIONES (admin) -->
+<!-- PANTALLA: UBICACIONES -->
 <div id="screen-ubicaciones" class="screen admin-only hidden">
   <div class="screen-header with-back">
     <button class="back-btn" data-back="fichar">‹</button>
@@ -146,7 +162,7 @@
   <div id="lista-ubicaciones" class="lista-admin"></div>
 </div>
 
-<!-- INCIDENCIAS -->
+<!-- PANTALLA: INCIDENCIAS -->
 <div id="screen-incidencias" class="screen">
   <div class="screen-header with-back">
     <button class="back-btn" data-back="fichar">‹</button>
@@ -155,9 +171,7 @@
   <div id="lista-incidencias" class="lista-admin"></div>
 </div>
 
-<!-- ── MODALES ─────────────────────────────────────────────────── -->
-
-<!-- CONFIRMAR FICHAJE -->
+<!-- MODAL CONFIRMAR FICHAJE -->
 <div id="modal-confirmar" class="modal-overlay hidden">
   <div class="modal-card">
     <div class="modal-icon" id="modal-icon">✅</div>
@@ -176,14 +190,10 @@
   </div>
 </div>
 
-<!-- FICHAJE MANUAL -->
+<!-- MODAL FICHAJE MANUAL -->
 <div id="modal-manual" class="modal-overlay hidden">
   <div class="modal-card">
     <h3>Fichaje Manual</h3>
-    <div id="manual-emp-wrap" class="hidden">
-      <label class="field-label">Empleado</label>
-      <select id="manual-emp" class="select-field"></select>
-    </div>
     <label class="field-label mt">Fecha</label>
     <input type="date" id="manual-fecha" class="select-field"/>
     <label class="field-label mt">Hora</label>
@@ -197,58 +207,13 @@
   </div>
 </div>
 
-<!-- MODAL ALARMA — contenido dinámico según iOS/Android -->
+<!-- MODAL TIMER DESCANSO -->
 <div id="modal-alarma" class="modal-overlay hidden">
   <div class="modal-card center">
     <div class="timer-display" id="timer-display">25:00</div>
-    <p class="timer-label" id="timer-label">Tiempo de descanso</p>
-
-    <!-- Bloque Android: timer interno -->
-    <div id="alarma-android" class="alarma-bloque">
-      <button class="btn btn-primary mt" id="btn-volver-fichar">✅ Ya estoy de vuelta</button>
-      <button class="btn btn-ghost" id="btn-cancelar-timer">Cancelar alarma</button>
-    </div>
-
-    <!-- Bloque iOS: Siri Shortcuts -->
-    <div id="alarma-ios" class="alarma-bloque hidden">
-      <button class="btn btn-siri mt" id="btn-siri">
-        <span>🍎</span> Activar con Siri
-      </button>
-      <button class="btn btn-primary" id="btn-volver-fichar-ios">✅ Ya estoy de vuelta</button>
-      <button class="btn btn-ghost" id="btn-cancelar-timer-ios">Cancelar alarma</button>
-      <button class="btn-link" id="btn-como-instalar">¿Cómo instalar el atajo?</button>
-    </div>
-  </div>
-</div>
-
-<!-- MODAL INSTRUCCIONES ATAJO SIRI -->
-<div id="modal-siri-instrucciones" class="modal-overlay hidden">
-  <div class="modal-card">
-    <h3>📲 Instalar atajo de Siri</h3>
-    <p class="modal-sub">Solo necesitas hacerlo una vez. El atajo crea una alarma nativa en tu iPhone.</p>
-    <div class="instrucciones-lista">
-      <div class="instruccion-paso">
-        <span class="paso-num">1</span>
-        <span>Abre la app <strong>Atajos</strong> en tu iPhone</span>
-      </div>
-      <div class="instruccion-paso">
-        <span class="paso-num">2</span>
-        <span>Pulsa <strong>+</strong> para crear un atajo nuevo</span>
-      </div>
-      <div class="instruccion-paso">
-        <span class="paso-num">3</span>
-        <span>Añade la acción <strong>"Crear alarma"</strong> y activa <strong>"Mostrar cuando se ejecute"</strong></span>
-      </div>
-      <div class="instruccion-paso">
-        <span class="paso-num">4</span>
-        <span>Nómbralo exactamente: <strong class="highlight">Alarma Fichajes</strong></span>
-      </div>
-      <div class="instruccion-paso">
-        <span class="paso-num">5</span>
-        <span>Guarda. ¡Listo! La próxima vez que actives la alarma desde aquí, se creará automáticamente.</span>
-      </div>
-    </div>
-    <button class="btn btn-primary mt" id="btn-cerrar-instrucciones">Entendido</button>
+    <p class="timer-label">Tiempo de descanso</p>
+    <button class="btn btn-primary mt" id="btn-volver-fichar">Ya estoy de vuelta</button>
+    <button class="btn btn-ghost" id="btn-cancelar-timer">Cancelar alarma</button>
   </div>
 </div>
 
@@ -279,6 +244,10 @@
     </select>
     <label class="field-label mt">Horas anuales</label>
     <input type="number" id="emp-horas" class="select-field" value="1770"/>
+    <label class="field-label mt">Jornada base diaria (h)</label>
+    <input type="number" id="emp-jornada-base" class="select-field" value="6.5" step="0.5" min="1" max="12"/>
+    <label class="field-label mt">Objetivo diario (h)</label>
+    <input type="number" id="emp-objetivo-dia" class="select-field" value="7.5" step="0.5" min="1" max="14"/>
     <label class="field-label mt">Alarma descanso (minutos)</label>
     <input type="number" id="emp-alarma" class="select-field" value="25" min="1" max="120"/>
     <div class="trimestres-inputs">
@@ -321,7 +290,7 @@
 <div id="sidebar-overlay" class="sidebar-overlay hidden"></div>
 <div id="toast" class="toast hidden"></div>
 
-<script>const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbygqsG-5nRjRJcJORURDhYVKtMuI7T4lNeaCkEm4lBoWpzOeZSXKzpw8riDdfo0i7CF/exec';</script>
+<script>const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyrtYcuy3BbQtylur5b1YOAQkKK9r5n9-GsYhdVFnmgP8F5tNN5vrmfdL66XRfgRn-d/exec';</script>
 <script src="app.js"></script>
 </body>
 </html>
