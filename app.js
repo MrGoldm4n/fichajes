@@ -1,7 +1,7 @@
 // FICHAJES v0.5.3 — app.js
 const GOOGLE_CLIENT_ID = '920497100034-08on4kifjrp7l80doe6ucs49ahop5v8c.apps.googleusercontent.com';
 const tg = window.Telegram?.WebApp;
-const IS_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 const state = { empleado:null, ubicacion:null, estadoHoy:null, timerInterval:null, timerSeconds:0, empleados:[], ubicaciones:[], config:{} };
 
 // ── API ───────────────────────────────────────────────────────────
@@ -10,7 +10,6 @@ async function api(action, data = {}) {
   const emailGoogle = state.empleado?.emailGoogle || '';
   const isWrite = ['fichar','corregirFichaje','guardarEmpleado','guardarUbicacion','resolverIncidencia','guardarConfig','loginGoogle'].includes(action);
   const payload = { action, telegramId, emailGoogle, ...data };
-
   let res;
   if (isWrite) {
     res = await fetch(APPS_SCRIPT_URL, { method: 'POST', body: JSON.stringify(payload) });
@@ -18,7 +17,6 @@ async function api(action, data = {}) {
     const params = new URLSearchParams(payload);
     res = await fetch(APPS_SCRIPT_URL + '?' + params.toString(), { method: 'GET', redirect: 'follow' });
   }
-
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const json = await res.json();
   if (json.error) throw new Error(json.error);
@@ -30,15 +28,20 @@ window.addEventListener('load', async () => {
   try {
     if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor('#0d0d1a'); tg.setBackgroundColor('#0d0d1a'); }
     await sleep(700);
-
-    if (tg?.initDataUnsafe?.user?.id) { await arrancarApp(); return; }
-
+    if (tg?.initDataUnsafe?.user?.id) {
+      await arrancarApp();
+      return;
+    }
     const saved = localStorage.getItem('fichajes_emp');
     if (saved) {
-      try { state.empleado = JSON.parse(saved); await arrancarApp(true); return; }
-      catch (e) { localStorage.removeItem('fichajes_emp'); }
+      try {
+        state.empleado = JSON.parse(saved);
+        await arrancarApp(true);
+        return;
+      } catch (e) {
+        localStorage.removeItem('fichajes_emp');
+      }
     }
-
     mostrarLoginGoogle();
   } catch (err) {
     console.error(err);
@@ -83,7 +86,9 @@ async function handleGoogleLogin(response) {
 
 // ── ARRANCAR APP ──────────────────────────────────────────────────
 async function arrancarApp(yaAutenticado = false) {
-  if (!yaAutenticado) state.empleado = await api('getEmpleado');
+  if (!yaAutenticado) {
+    state.empleado = await api('getEmpleado');
+  }
   const emp = state.empleado;
   const [ubicaciones, config] = await Promise.all([api('getUbicaciones'), api('getConfig')]);
   state.ubicaciones = ubicaciones || [];
@@ -97,7 +102,7 @@ async function arrancarApp(yaAutenticado = false) {
     if (state.ubicacion && subEl) subEl.textContent = '📍 ' + state.ubicacion.Nombre;
   }
 
-  // FIX: cargar estado ANTES de mostrar pantalla → no aparece "0 fichajes"
+  // Cargar estado ANTES de mostrar pantalla — evita "0 fichajes" al arrancar
   await refreshEstado();
 
   ocultarPantallas();
@@ -106,16 +111,18 @@ async function arrancarApp(yaAutenticado = false) {
   iniciarReloj();
   setupNavegacion();
 
-  // Botón alarma: visible solo en Android
-  const btnAlarma = document.getElementById('btn-alarma');
-  if (btnAlarma) btnAlarma.style.display = IS_IOS ? 'none' : '';
-
   if (emp.Rol === 'admin') {
     document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
   }
+
+  // Botón alarma: solo Android
+  const btnAlarma = document.getElementById('btn-alarma');
+  if (btnAlarma) {
+    isIOS ? btnAlarma.classList.add('hidden') : btnAlarma.classList.remove('hidden');
+  }
 }
 
-// ── SETUP EVENTOS (solo una vez) ──────────────────────────────────
+// ── SETUP EVENTOS ─────────────────────────────────────────────────
 function setupOnce() {
   if (window.__fichajesSetupDone) return;
   window.__fichajesSetupDone = true;
@@ -167,8 +174,14 @@ function mostrarPantalla(view) {
   if (view === 'incidencias')  cargarIncidencias();
 }
 
-function abrirSidebar()  { document.getElementById('sidebar')?.classList.remove('hidden'); document.getElementById('sidebar-overlay')?.classList.remove('hidden'); }
-function cerrarSidebar() { document.getElementById('sidebar')?.classList.add('hidden');    document.getElementById('sidebar-overlay')?.classList.add('hidden'); }
+function abrirSidebar() {
+  document.getElementById('sidebar')?.classList.remove('hidden');
+  document.getElementById('sidebar-overlay')?.classList.remove('hidden');
+}
+function cerrarSidebar() {
+  document.getElementById('sidebar')?.classList.add('hidden');
+  document.getElementById('sidebar-overlay')?.classList.add('hidden');
+}
 
 // ── UI EMPLEADO ───────────────────────────────────────────────────
 function actualizarUIEmpleado(emp) {
@@ -178,7 +191,7 @@ function actualizarUIEmpleado(emp) {
   const role = document.getElementById('sidebar-role'); if (role) role.textContent = emp.Rol || '';
 }
 
-// ── ESTADO Y FICHAJE ──────────────────────────────────────────────
+// ── ESTADO ────────────────────────────────────────────────────────
 async function refreshEstado() {
   state.estadoHoy = await api('getEstado');
   actualizarUIFichaje();
@@ -196,6 +209,7 @@ function actualizarUIFichaje() {
   if (btnText) btnText.textContent = 'Registrar ' + (s.proximoTipo || 'ENTRADA');
 }
 
+// ── FICHAJE ───────────────────────────────────────────────────────
 async function prepararFichaje(autoConfirm) {
   await refreshEstado();
   const confirmar = state.empleado?.Confirmar_Fichaje !== 'false';
@@ -206,14 +220,17 @@ async function prepararFichaje(autoConfirm) {
   document.getElementById('modal-titulo').textContent = 'Confirmar fichaje';
   document.getElementById('modal-subtitulo').textContent = tipo + ' — ' + horaActual();
 
-  // Tiempo acumulado solo en SALIDA
+  // Mostrar horas acumuladas del día en cualquier SALIDA
   const resumen = document.getElementById('modal-resumen-horas');
   if (tipo === 'SALIDA' && resumen) {
-    const horasAcum = calcularHorasDia(state.estadoHoy?.fichajesHoy || []);
-    resumen.classList.remove('hidden');
-    document.getElementById('resumen-valor').textContent = horasAcum || '—';
-    const lbl = document.getElementById('resumen-label');
-    if (lbl) lbl.textContent = 'Tiempo trabajado hoy';
+    const fichajesHoy = state.estadoHoy?.fichajesHoy || [];
+    const horasAcum = calcularHorasAcumuladas(fichajesHoy);
+    if (horasAcum) {
+      resumen.classList.remove('hidden');
+      document.getElementById('resumen-valor').textContent = horasAcum;
+    } else {
+      resumen.classList.add('hidden');
+    }
   } else if (resumen) {
     resumen.classList.add('hidden');
   }
@@ -226,22 +243,15 @@ async function ejecutarFichaje({ comentario }) {
   try {
     const res = await api('fichar', {
       comentario,
-      ubicacionId:     state.ubicacion?.ID_Ubicacion || '',
-      ubicacionNombre: state.ubicacion?.Nombre || 'Manual',
-      metodo: state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user ? 'MINI_APP' : 'WEB')
+      ubicacionId: state.ubicacion?.ID_Ubicacion || '',
+      ubicacionNombre: state.ubicacion?.Nombre || '',
+      metodo: state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user?.id ? 'MINI_APP' : 'WEB')
     });
     if (res.ok) {
+      toast('✅ ' + res.tipo + ' a las ' + res.hora, 'ok');
       document.getElementById('modal-confirmar')?.classList.add('hidden');
       await refreshEstado();
-
-      if (res.tipo === 'SALIDA') {
-        // FIX: calcular horas acumuladas del día tras la salida
-        const horasTotal = calcularHorasDia(state.estadoHoy?.fichajesHoy || []);
-        toast('🔴 SALIDA ' + res.hora + (horasTotal ? ' · ' + horasTotal + ' hoy' : ''), 'ok');
-        if (!IS_IOS) iniciarTimerDescanso();
-      } else {
-        toast('🟢 ENTRADA ' + res.hora, 'ok');
-      }
+      if (res.tipo === 'SALIDA' && !isIOS) iniciarTimerDescanso();
     }
   } catch (err) {
     toast('❌ ' + err.message, 'error');
@@ -251,18 +261,21 @@ async function ejecutarFichaje({ comentario }) {
 // ── FICHAJE MANUAL ────────────────────────────────────────────────
 function abrirFichajeManual() {
   document.getElementById('manual-fecha').value = fechaHoy();
-  document.getElementById('manual-hora').value  = horaActual();
+  document.getElementById('manual-hora').value = horaActual();
   document.getElementById('manual-comentario').value = '';
   document.getElementById('modal-manual')?.classList.remove('hidden');
 }
 
 async function enviarFichajeManual() {
-  const fecha     = document.getElementById('manual-fecha')?.value;
-  const hora      = document.getElementById('manual-hora')?.value;
+  const fecha = document.getElementById('manual-fecha')?.value;
+  const hora  = document.getElementById('manual-hora')?.value;
   const comentario = document.getElementById('manual-comentario')?.value?.trim() || '';
   if (!fecha || !hora) { toast('Indica fecha y hora', 'error'); return; }
   try {
-    const res = await api('fichar', { fecha, hora, comentario, ubicacionId: '', ubicacionNombre: 'Manual', metodo: 'MANUAL' });
+    const res = await api('fichar', {
+      fecha, hora, comentario,
+      ubicacionId: '', ubicacionNombre: '', metodo: 'MANUAL'
+    });
     if (res.ok) {
       toast('✅ ' + res.tipo + ' manual registrada', 'ok');
       document.getElementById('modal-manual')?.classList.add('hidden');
@@ -275,7 +288,7 @@ async function enviarFichajeManual() {
 
 // ── TIMER DESCANSO (solo Android) ─────────────────────────────────
 function iniciarTimerDescanso() {
-  if (IS_IOS) return;
+  if (isIOS) return;
   const mins = parseInt(state.empleado?.Alarma_Descanso || state.config?.ALARMA_DESCANSO || '25', 10);
   state.timerSeconds = mins * 60;
   document.getElementById('modal-alarma')?.classList.remove('hidden');
@@ -286,7 +299,7 @@ function iniciarTimerDescanso() {
     actualizarTimerDisplay();
     if (state.timerSeconds <= 0) {
       clearInterval(state.timerInterval);
-      toast('⏰ ¡Hora de volver!', 'warning');
+      toast('⏰ Descanso completado. ¡Hora de volver!', 'warning');
     }
   }, 1000);
 }
@@ -298,30 +311,15 @@ function actualizarTimerDisplay() {
   el.textContent = m + ':' + s;
 }
 
-// ── CÁLCULO HORAS (suma todos los pares ENTRADA/SALIDA del día) ────
-function calcularHorasDia(fichajes) {
-  if (!Array.isArray(fichajes) || fichajes.length < 2) return null;
-  const ord = [...fichajes].sort((a, b) => (a.Hora || '').localeCompare(b.Hora || ''));
-  let mins = 0;
-  for (let i = 0; i < ord.length - 1; i++) {
-    if (ord[i].Tipo === 'ENTRADA' && ord[i + 1]?.Tipo === 'SALIDA') {
-      const [hE, mE] = (ord[i].Hora || '0:0').split(':').map(Number);
-      const [hS, mS] = (ord[i + 1].Hora || '0:0').split(':').map(Number);
-      const diff = (hS * 60 + mS) - (hE * 60 + mE);
-      if (diff > 0) mins += diff;
-    }
-  }
-  if (mins <= 0) return null;
-  return Math.floor(mins / 60) + 'h' + (mins % 60 ? ' ' + mins % 60 + 'm' : '');
-}
-
 // ── MIS FICHAJES ──────────────────────────────────────────────────
 async function cargarMisFichajes() {
-  const input = document.getElementById('filter-mes'); if (!input) return;
+  const input = document.getElementById('filter-mes');
+  if (!input) return;
   const hoy = new Date();
   if (!input.value) input.value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
   input.onchange = () => cargarMisFichajes();
-  const lista = document.getElementById('lista-fichajes'); if (!lista) return;
+  const lista = document.getElementById('lista-fichajes');
+  if (!lista) return;
   lista.innerHTML = '<div class="empty-state">Cargando…</div>';
   try {
     const data = await api('getFichajes', { mes: input.value });
@@ -344,7 +342,8 @@ async function cargarMisFichajes() {
         <div class="dia-header">
           <span class="dia-fecha">${formatearFecha(fecha)}</span>
           ${horas ? `<span class="dia-horas">${horas}</span>` : ''}
-        </div>${filas}
+        </div>
+        ${filas}
       </div>`;
     }).join('');
   } catch (err) {
@@ -356,7 +355,7 @@ async function cargarMisFichajes() {
 async function cargarDashboard() {
   try {
     const año = new Date().getFullYear();
-    const añoEl = document.getElementById('dash-año'); if (añoEl) añoEl.textContent = año;
+    const dashAño = document.getElementById('dash-año'); if (dashAño) dashAño.textContent = año;
     const resumen = await api('getResumen', { año });
     const obj  = parseInt(state.empleado?.Horas_Anuales || 1770);
     const real = resumen.horasRealizadas || 0;
@@ -410,19 +409,19 @@ async function cargarEmpleados() {
 
 function abrirFormEmpleado(emp) {
   document.getElementById('emp-form-titulo').textContent = emp ? 'Editar Empleado' : 'Nuevo Empleado';
-  document.getElementById('emp-id').value        = emp?.ID_Empleado || '';
-  document.getElementById('emp-nombre').value    = emp?.Nombre_Completo || '';
-  document.getElementById('emp-numero').value    = emp?.Numero_Empleado || '';
-  document.getElementById('emp-email').value     = emp?.Email || '';
-  document.getElementById('emp-tgid').value      = emp?.Telegram_ID || '';
-  document.getElementById('emp-rol').value       = emp?.Rol || 'empleado';
-  document.getElementById('emp-notif').value     = emp?.Notificaciones || 'privado';
-  document.getElementById('emp-horas').value     = emp?.Horas_Anuales || '1770';
-  document.getElementById('emp-alarma').value    = emp?.Alarma_Descanso || '25';
-  document.getElementById('emp-confirmar').value = emp?.Confirmar_Fichaje || 'true';
+  document.getElementById('emp-id').value          = emp?.ID_Empleado      || '';
+  document.getElementById('emp-nombre').value      = emp?.Nombre_Completo  || '';
+  document.getElementById('emp-numero').value      = emp?.Numero_Empleado  || '';
+  document.getElementById('emp-email').value       = emp?.Email            || '';
+  document.getElementById('emp-tgid').value        = emp?.Telegram_ID      || '';
+  document.getElementById('emp-rol').value         = emp?.Rol              || 'empleado';
+  document.getElementById('emp-notif').value       = emp?.Notificaciones   || 'privado';
+  document.getElementById('emp-horas').value       = emp?.Horas_Anuales    || '1770';
+  document.getElementById('emp-alarma').value      = emp?.Alarma_Descanso  || '25';
+  document.getElementById('emp-confirmar').value   = emp?.Confirmar_Fichaje|| 'true';
   document.getElementById('modal-empleado')?.classList.remove('hidden');
-  document.getElementById('emp-cancel').onclick  = () => document.getElementById('modal-empleado')?.classList.add('hidden');
-  document.getElementById('emp-save').onclick    = guardarEmpleadoForm;
+  document.getElementById('emp-cancel').onclick = () => document.getElementById('modal-empleado')?.classList.add('hidden');
+  document.getElementById('emp-save').onclick   = guardarEmpleadoForm;
 }
 
 function editarEmpleado(id) {
@@ -466,7 +465,9 @@ async function cargarUbicaciones() {
           </div>
         </div>
       </div>`).join('') || '<div class="empty-state">Sin ubicaciones</div>';
-  } catch (err) { lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>'; }
+  } catch (err) {
+    lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>';
+  }
 }
 
 // ── INCIDENCIAS ───────────────────────────────────────────────────
@@ -487,11 +488,15 @@ async function cargarIncidencias() {
         </div>
         <span class="badge ${inc.Estado === 'resuelta' ? 'ok' : 'warn'}">${inc.Estado}</span>
       </div>`).join('');
-  } catch (err) { lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>'; }
+  } catch (err) {
+    lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>';
+  }
 }
 
 // ── UTILIDADES ────────────────────────────────────────────────────
-function ocultarPantallas() { document.querySelectorAll('.screen').forEach(el => el.classList.remove('active')); }
+function ocultarPantallas() {
+  document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+}
 
 function mostrarErrorInicio(msg) {
   ocultarPantallas();
@@ -504,7 +509,7 @@ function toast(msg, tipo = 'ok') {
   const el = document.getElementById('toast'); if (!el) return;
   el.textContent = msg;
   el.className = 'toast show ' + tipo;
-  setTimeout(() => el.className = 'toast hidden', 3000);
+  setTimeout(() => el.className = 'toast hidden', 2800);
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -523,6 +528,47 @@ function formatearFecha(str) {
   if (!str) return '';
   const [y, m, d] = str.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function toMins(horaStr) {
+  if (!horaStr) return 0;
+  const parts = horaStr.split(':').map(Number);
+  return parts[0] * 60 + (parts[1] || 0);
+}
+
+// Suma pares ENTRADA/SALIDA cerrados — para "Mis Fichajes"
+function calcularHorasDia(fichajes) {
+  if (!Array.isArray(fichajes) || fichajes.length < 2) return null;
+  const ord = [...fichajes].sort((a, b) => (a.Hora || '').localeCompare(b.Hora || ''));
+  let mins = 0;
+  for (let i = 0; i < ord.length - 1; i += 2) {
+    if (ord[i].Tipo === 'ENTRADA' && ord[i + 1]?.Tipo === 'SALIDA') {
+      mins += toMins(ord[i + 1].Hora) - toMins(ord[i].Hora);
+    }
+  }
+  return mins > 0 ? formatMins(mins) : null;
+}
+
+// Suma pares cerrados + entrada abierta actual — para modal de confirmación de salida
+function calcularHorasAcumuladas(fichajes) {
+  if (!Array.isArray(fichajes) || fichajes.length < 1) return null;
+  const ord = [...fichajes].sort((a, b) => (a.Hora || '').localeCompare(b.Hora || ''));
+  let mins = 0;
+  // Sumar pares cerrados
+  for (let i = 0; i < ord.length - 1; i += 2) {
+    if (ord[i].Tipo === 'ENTRADA' && ord[i + 1]?.Tipo === 'SALIDA') {
+      mins += toMins(ord[i + 1].Hora) - toMins(ord[i].Hora);
+    }
+  }
+  // Si hay una entrada sin cerrar, sumar hasta ahora
+  if (ord.length % 2 !== 0 && ord[ord.length - 1].Tipo === 'ENTRADA') {
+    mins += toMins(horaActual()) - toMins(ord[ord.length - 1].Hora);
+  }
+  return mins > 0 ? formatMins(mins) : null;
+}
+
+function formatMins(mins) {
+  return Math.floor(mins / 60) + 'h' + (mins % 60 ? ' ' + (mins % 60) + 'm' : '');
 }
 
 function iniciarReloj() {
