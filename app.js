@@ -1,26 +1,24 @@
-// FICHAJES v0.6.0 — app.js
+// FICHAJES v0.7.0 — app.js
 const GOOGLE_CLIENT_ID = '920497100034-08on4kifjrp7l80doe6ucs49ahop5v8c.apps.googleusercontent.com';
 const tg    = window.Telegram?.WebApp;
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-const CACHE_TTL = 30 * 60 * 1000; // 30 min en ms
+const CIRC  = 2 * Math.PI * 96; // circunferencia del anillo (r=96) ≈ 603
 
 const state = {
   empleado: null, ubicacion: null, estadoHoy: null,
   timerInterval: null, timerSeconds: 0,
+  ringInterval: null,
   empleados: [], ubicaciones: [], config: {}
 };
 
-// ── CACHE localStorage ────────────────────────────────────────────
-function cacheSet(key, value) {
-  try { localStorage.setItem(key, JSON.stringify({ v: value, t: Date.now() })); } catch(e) {}
-}
-function cacheGet(key, ttl) {
+// ── CACHE ─────────────────────────────────────────────────────────
+function cacheSet(k, v) { try { localStorage.setItem(k, JSON.stringify({ v, t: Date.now() })); } catch(e){} }
+function cacheGet(k, ttl) {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const obj = JSON.parse(raw);
-    if (ttl && Date.now() - obj.t > ttl) return null;
-    return obj.v;
+    const raw = localStorage.getItem(k); if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (ttl && Date.now() - o.t > ttl) return null;
+    return o.v;
   } catch(e) { return null; }
 }
 
@@ -43,40 +41,20 @@ async function api(action, data = {}) {
   return json;
 }
 
-// ── BLOQUEO DE BOTONES ────────────────────────────────────────────
-function bloquearBtn(id) {
-  const el = document.getElementById(id);
-  if (el) { el.disabled = true; el.style.opacity = '0.6'; }
-}
-function desbloquearBtn(id) {
-  const el = document.getElementById(id);
-  if (el) { el.disabled = false; el.style.opacity = ''; }
-}
+// ── BOTONES ───────────────────────────────────────────────────────
+function bloquearBtn(id)   { const el = document.getElementById(id); if (el) { el.disabled = true;  el.style.opacity = '0.55'; } }
+function desbloquearBtn(id){ const el = document.getElementById(id); if (el) { el.disabled = false; el.style.opacity = ''; } }
 
 // ── ARRANQUE ──────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
   try {
     if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor('#0d0d1a'); tg.setBackgroundColor('#0d0d1a'); }
     await sleep(500);
-
-    // Caso 1: dentro de Telegram
-    if (tg?.initDataUnsafe?.user?.id) {
-      await arrancarApp();
-      return;
-    }
-    // Caso 2: navegador con sesión guardada
+    if (tg?.initDataUnsafe?.user?.id) { await arrancarApp(); return; }
     const saved = cacheGet('fichajes_emp');
-    if (saved) {
-      state.empleado = saved;
-      await arrancarApp(true);
-      return;
-    }
-    // Caso 3: login Google
+    if (saved) { state.empleado = saved; await arrancarApp(true); return; }
     mostrarLoginGoogle();
-  } catch (err) {
-    console.error(err);
-    mostrarErrorInicio(err.message);
-  }
+  } catch (err) { console.error(err); mostrarErrorInicio(err.message); }
 });
 
 // ── LOGIN GOOGLE ──────────────────────────────────────────────────
@@ -88,7 +66,7 @@ function mostrarLoginGoogle() {
       clearInterval(t);
       google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleLogin });
       google.accounts.id.renderButton(document.getElementById('google-btn'),
-        { theme: 'filled_blue', size: 'large', text: 'signin_with', locale: 'es', width: 280 });
+        { theme:'filled_blue', size:'large', text:'signin_with', locale:'es', width:280 });
     }
   }, 150);
 }
@@ -99,8 +77,7 @@ async function handleGoogleLogin(response) {
   try {
     const payload = JSON.parse(atob(response.credential.split('.')[1]));
     const res  = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'loginGoogle', token: response.credential, email: payload.email })
+      method: 'POST', body: JSON.stringify({ action:'loginGoogle', token:response.credential, email:payload.email })
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.message || 'No autorizado');
@@ -112,67 +89,55 @@ async function handleGoogleLogin(response) {
   }
 }
 
-// ── ARRANCAR APP — ⚡ 1 sola llamada al backend ───────────────────
+// ── ARRANCAR APP ⚡ (1 sola llamada) ──────────────────────────────
 async function arrancarApp(yaAutenticado = false) {
   try {
-    // ⚡ INIT: una sola petición que devuelve todo
     const telegramId  = tg?.initDataUnsafe?.user?.id || '';
     const emailGoogle = state.empleado?.emailGoogle || '';
-    const params = new URLSearchParams({ action: 'init', telegramId, emailGoogle });
-    const res  = await fetch(APPS_SCRIPT_URL + '?' + params, { method: 'GET', redirect: 'follow' });
+    const res  = await fetch(APPS_SCRIPT_URL + '?' + new URLSearchParams({ action:'init', telegramId, emailGoogle }), { redirect:'follow' });
     const init = await res.json();
     if (init.error) throw new Error(init.error);
 
-    state.empleado   = yaAutenticado
-      ? { ...state.empleado, ...init.empleado }
-      : init.empleado;
+    state.empleado    = yaAutenticado ? { ...state.empleado, ...init.empleado } : init.empleado;
     state.ubicaciones = init.ubicaciones || [];
     state.config      = init.config      || {};
-    state.estadoHoy   = init.estado;
+    state.estadoHoy   = init.estado;     // ← FIX: fichajesHoy ya viene aquí
 
-    // Guardar en cache (ubicaciones y config son lentos de cambiar)
     cacheSet('fichajes_emp',  state.empleado);
     cacheSet('fichajes_ubic', state.ubicaciones);
     cacheSet('fichajes_cfg',  state.config);
-
   } catch (err) {
-    // Si falla init, intentar con cache
-    const cachedUbic = cacheGet('fichajes_ubic', CACHE_TTL);
-    const cachedCfg  = cacheGet('fichajes_cfg',  CACHE_TTL);
-    if (cachedUbic) state.ubicaciones = cachedUbic;
-    if (cachedCfg)  state.config      = cachedCfg;
+    // Fallback a cache si el backend falla
+    const cu = cacheGet('fichajes_ubic', 30*60*1000);
+    const cc = cacheGet('fichajes_cfg',  30*60*1000);
+    if (cu) state.ubicaciones = cu;
+    if (cc) state.config      = cc;
     if (!state.empleado) throw err;
-    // Refresca solo el estado
     state.estadoHoy = await api('getEstado');
   }
 
   const emp = state.empleado;
   actualizarUIEmpleado(emp);
 
-  // ¿Viene de NFC?
   const locParam = tg?.initDataUnsafe?.start_param || new URLSearchParams(location.search).get('loc') || '';
   if (locParam) {
-    state.ubicacion = state.ubicaciones.find(u => u.NFC_Param === locParam || u.ID_Ubicacion === locParam) || null;
+    state.ubicacion = state.ubicaciones.find(u => u.NFC_Param===locParam || u.ID_Ubicacion===locParam) || null;
     const subEl = document.getElementById('fichar-ubicacion');
     if (state.ubicacion && subEl) subEl.textContent = '📍 ' + state.ubicacion.Nombre;
   }
 
   actualizarUIFichaje();
+  iniciarAnillo();
+
   ocultarPantallas();
   document.getElementById('screen-fichar')?.classList.add('active');
   setupOnce();
   iniciarReloj();
   setupNavegacion();
 
-  if (emp.Rol === 'admin') {
-    document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
-  }
-
-  // Botón alarma: solo Android
+  if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
   const btnAlarma = document.getElementById('btn-alarma');
-  if (btnAlarma) {
-    isIOS ? btnAlarma.classList.add('hidden') : btnAlarma.classList.remove('hidden');
-  }
+  if (btnAlarma) { isIOS ? btnAlarma.classList.add('hidden') : btnAlarma.classList.remove('hidden'); }
 }
 
 // ── SETUP EVENTOS ─────────────────────────────────────────────────
@@ -187,12 +152,11 @@ function setupOnce() {
   document.getElementById('modal-cancel')?.addEventListener('click', () =>
     document.getElementById('modal-confirmar')?.classList.add('hidden'));
 
-  document.getElementById('modal-confirm')?.addEventListener('click', async () => {
-    bloquearBtn('modal-confirm');
-    bloquearBtn('modal-cancel');
-    await ejecutarFichaje({ comentario: document.getElementById('modal-comentario')?.value?.trim() || '' });
-    desbloquearBtn('modal-confirm');
-    desbloquearBtn('modal-cancel');
+  document.getElementById('modal-confirm')?.addEventListener('click', () => {
+    bloquearBtn('modal-confirm'); bloquearBtn('modal-cancel');
+    ejecutarFichaje({ comentario: document.getElementById('modal-comentario')?.value?.trim() || '' });
+    // Los botones se desbloquean en ejecutarFichaje (fire-and-forget)
+    setTimeout(() => { desbloquearBtn('modal-confirm'); desbloquearBtn('modal-cancel'); }, 800);
   });
 
   document.getElementById('manual-cancel')?.addEventListener('click', () =>
@@ -212,7 +176,6 @@ function setupOnce() {
     clearInterval(state.timerInterval);
     document.getElementById('modal-alarma')?.classList.add('hidden');
   });
-
   document.getElementById('sidebar-overlay')?.addEventListener('click', cerrarSidebar);
   document.getElementById('btn-menu')?.addEventListener('click', abrirSidebar);
 }
@@ -229,8 +192,7 @@ function setupNavegacion() {
 
 function mostrarPantalla(view) {
   ocultarPantallas();
-  const el = document.getElementById('screen-' + view);
-  if (el) el.classList.add('active');
+  document.getElementById('screen-' + view)?.classList.add('active');
   if (view === 'mis-fichajes') cargarMisFichajes();
   if (view === 'dashboard')    cargarDashboard();
   if (view === 'empleados')    cargarEmpleados();
@@ -238,38 +200,115 @@ function mostrarPantalla(view) {
   if (view === 'incidencias')  cargarIncidencias();
 }
 
-function abrirSidebar() {
-  document.getElementById('sidebar')?.classList.remove('hidden');
-  document.getElementById('sidebar-overlay')?.classList.remove('hidden');
-}
-function cerrarSidebar() {
-  document.getElementById('sidebar')?.classList.add('hidden');
-  document.getElementById('sidebar-overlay')?.classList.add('hidden');
-}
+function abrirSidebar()  { document.getElementById('sidebar')?.classList.remove('hidden'); document.getElementById('sidebar-overlay')?.classList.remove('hidden'); }
+function cerrarSidebar() { document.getElementById('sidebar')?.classList.add('hidden');    document.getElementById('sidebar-overlay')?.classList.add('hidden'); }
 
-// ── UI ────────────────────────────────────────────────────────────
+// ── UI EMPLEADO ───────────────────────────────────────────────────
 function actualizarUIEmpleado(emp) {
-  const ini = (emp.Nombre_Completo || '').split(' ').filter(Boolean).slice(0,2).map(n=>n[0]).join('').toUpperCase();
+  const ini = (emp.Nombre_Completo||'').split(' ').filter(Boolean).slice(0,2).map(n=>n[0]).join('').toUpperCase();
   ['fichar-avatar','sidebar-avatar'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ini; });
-  ['fichar-nombre','sidebar-name'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = emp.Nombre_Completo || ''; });
-  const role = document.getElementById('sidebar-role'); if (role) role.textContent = emp.Rol || '';
+  ['fichar-nombre','sidebar-name'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = emp.Nombre_Completo||''; });
+  const role = document.getElementById('sidebar-role'); if (role) role.textContent = emp.Rol||'';
 }
 
+// ── ESTADO ────────────────────────────────────────────────────────
 async function refreshEstado() {
   state.estadoHoy = await api('getEstado');
   actualizarUIFichaje();
+  iniciarAnillo();
 }
 
 function actualizarUIFichaje() {
   const s = state.estadoHoy; if (!s) return;
   const badge = document.getElementById('tipo-badge');
-  if (badge) badge.textContent = s.proximoTipo || 'ENTRADA';
+  if (badge) { badge.textContent = s.proximoTipo||'ENTRADA'; badge.className = 'tipo-badge' + (s.proximoTipo==='SALIDA'?' salida':''); }
   const count = document.getElementById('fichar-count');
   if (count) count.textContent = (s.totalFichajesHoy||0) + ' fichaje' + ((s.totalFichajesHoy||0)===1?'':'s') + ' hoy';
   const btn = document.getElementById('btn-fichar');
-  if (btn) btn.className = 'btn btn-fichar' + (s.proximoTipo === 'SALIDA' ? ' salida' : '');
+  if (btn) btn.className = 'btn btn-fichar' + (s.proximoTipo==='SALIDA'?' salida':'');
   const btnText = document.getElementById('btn-fichar-text');
-  if (btnText) btnText.textContent = 'Registrar ' + (s.proximoTipo || 'ENTRADA');
+  if (btnText) btnText.textContent = 'Registrar ' + (s.proximoTipo||'ENTRADA');
+}
+
+// ── ANILLO DINÁMICO ───────────────────────────────────────────────
+function iniciarAnillo() {
+  clearInterval(state.ringInterval);
+  actualizarAnillo(); // dibujar inmediatamente
+  // Si está fichado (entrada sin cerrar), actualizar cada 10 segundos
+  const s = state.estadoHoy;
+  if (s && s.proximoTipo === 'SALIDA') {
+    state.ringInterval = setInterval(actualizarAnillo, 10000);
+  }
+}
+
+function actualizarAnillo() {
+  const s   = state.estadoHoy;
+  const emp = state.empleado;
+  if (!emp) return;
+
+  const jornadaBase = parseFloat(emp.Jornada_Base_Dia || '6.5');
+  const objetivo    = parseFloat(emp.Objetivo_Dia     || '7.5');
+  const minsBase    = jornadaBase * 60;
+  const minsObj     = objetivo * 60;
+
+  // Calcular minutos trabajados hoy (acumulados)
+  const fichajes  = (s && s.fichajesHoy) ? s.fichajesHoy : [];
+  let minsReal    = calcularMinsAcumulados(fichajes);
+  const enCurso   = s && s.proximoTipo === 'SALIDA'; // hay entrada abierta
+
+  // Contador en vivo
+  const valorEl  = document.getElementById('trabajado-valor');
+  const estadoEl = document.getElementById('trabajado-estado');
+  if (valorEl) valorEl.textContent = minsReal > 0 ? formatMins(minsReal) : '—';
+  if (estadoEl) estadoEl.textContent = enCurso ? '▶' : (minsReal > 0 ? '⏸' : '');
+
+  // Anillo: el total del anillo es max(objetivo, real) para que no se corte
+  const minsMax = Math.max(minsObj, minsReal, 1);
+  const wrap    = document.querySelector('.ring-wrap');
+  if (wrap) { enCurso ? wrap.classList.add('fichado') : wrap.classList.remove('fichado'); }
+
+  // Calcular dashoffset para cada tramo
+  // Tramo base (azul): 0 → minsBase
+  const minsTramoBase  = Math.min(minsReal, minsBase);
+  const minsTramoVerde = minsReal > minsBase ? Math.min(minsReal - minsBase, minsObj - minsBase) : 0;
+  const minsTramoNaranja = minsReal > minsObj ? minsReal - minsObj : 0;
+
+  function calcOffset(tramo, desde) {
+    // stroke-dasharray: longitud_tramo, resto
+    // stroke-dashoffset: desplazamiento desde el inicio
+    const longitud = (tramo / minsMax) * CIRC;
+    const offset   = (desde / minsMax) * CIRC;
+    // dashoffset positivo = el tramo empieza en esa posición del arco (negativo se clampea a 0 en SVG)
+    return { dasharray: longitud + ' ' + CIRC, dashoffset: offset };
+  }
+
+  const base    = calcOffset(minsTramoBase,    0);
+  const verde   = calcOffset(minsTramoVerde,   minsBase);
+  const naranja = calcOffset(minsTramoNaranja, minsObj);
+
+  setRingSegment('ring-base',  base);
+  setRingSegment('ring-bolsa', verde);
+  setRingSegment('ring-extra', naranja);
+}
+
+function setRingSegment(id, props) {
+  const el = document.getElementById(id); if (!el) return;
+  el.style.strokeDasharray  = props.dasharray;
+  el.style.strokeDashoffset = props.dashoffset;
+}
+
+function calcularMinsAcumulados(fichajes) {
+  if (!Array.isArray(fichajes) || !fichajes.length) return 0;
+  const ord = [...fichajes].sort((a,b) => (a.Hora||'').localeCompare(b.Hora||''));
+  let mins = 0;
+  for (let i = 0; i < ord.length - 1; i += 2) {
+    if (ord[i].Tipo === 'ENTRADA' && ord[i+1]?.Tipo === 'SALIDA')
+      mins += toMins(ord[i+1].Hora) - toMins(ord[i].Hora);
+  }
+  // Entrada abierta → sumar hasta ahora
+  if (ord.length % 2 !== 0 && ord[ord.length-1].Tipo === 'ENTRADA')
+    mins += toMins(horaActual()) - toMins(ord[ord.length-1].Hora);
+  return Math.max(mins, 0);
 }
 
 // ── FICHAJE ───────────────────────────────────────────────────────
@@ -278,27 +317,22 @@ async function prepararFichaje(autoConfirm) {
   try {
     await refreshEstado();
     const confirmar = state.empleado?.Confirmar_Fichaje !== 'false';
-    if (autoConfirm || !confirmar) {
-      await ejecutarFichaje({ comentario: '' });
-      return;
-    }
+    if (autoConfirm || !confirmar) { await ejecutarFichaje({ comentario:'' }); return; }
+
     const tipo = state.estadoHoy?.proximoTipo || 'ENTRADA';
-    document.getElementById('modal-icon').textContent = tipo === 'ENTRADA' ? '🟢' : '🔴';
+    document.getElementById('modal-icon').textContent = tipo==='ENTRADA'?'🟢':'🔴';
     document.getElementById('modal-titulo').textContent = 'Confirmar fichaje';
     document.getElementById('modal-subtitulo').textContent = tipo + ' — ' + horaActual();
 
+    // Mostrar horas acumuladas en modal de SALIDA
     const resumen = document.getElementById('modal-resumen-horas');
     if (tipo === 'SALIDA' && resumen) {
-      const horasAcum = calcularHorasAcumuladas(state.estadoHoy?.fichajesHoy || []);
-      if (horasAcum) {
+      const mins = calcularMinsAcumulados(state.estadoHoy?.fichajesHoy || []);
+      if (mins > 0) {
         resumen.classList.remove('hidden');
-        document.getElementById('resumen-valor').textContent = horasAcum;
-      } else {
-        resumen.classList.add('hidden');
-      }
-    } else if (resumen) {
-      resumen.classList.add('hidden');
-    }
+        document.getElementById('resumen-valor').textContent = formatMins(mins);
+      } else resumen.classList.add('hidden');
+    } else if (resumen) resumen.classList.add('hidden');
 
     document.getElementById('modal-comentario').value = '';
     document.getElementById('modal-confirmar')?.classList.remove('hidden');
@@ -308,28 +342,59 @@ async function prepararFichaje(autoConfirm) {
 }
 
 async function ejecutarFichaje({ comentario }) {
-  try {
-    const res = await api('fichar', {
-      comentario,
-      ubicacionId:     state.ubicacion?.ID_Ubicacion || '',
-      ubicacionNombre: state.ubicacion?.Nombre || '',
-      metodo: state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user?.id ? 'MINI_APP' : 'WEB')
-    });
+  const tipo = state.estadoHoy?.proximoTipo || 'ENTRADA';
+
+  // ⚡ OPTIMISTIC UI — actualizar pantalla ANTES de esperar el backend
+  aplicarFichajeOptimista(tipo);
+
+  // Lanzar al backend en segundo plano
+  api('fichar', {
+    comentario,
+    ubicacionId:     state.ubicacion?.ID_Ubicacion || '',
+    ubicacionNombre: state.ubicacion?.Nombre || '',
+    metodo: state.ubicacion ? 'NFC' : (tg?.initDataUnsafe?.user?.id ? 'MINI_APP' : 'WEB')
+  }).then(res => {
     if (res.ok) {
       toast('✅ ' + res.tipo + ' a las ' + res.hora, 'ok');
-      document.getElementById('modal-confirmar')?.classList.add('hidden');
-      await refreshEstado();
+      // Refrescar estado real del servidor (silencioso)
+      api('getEstado').then(estado => {
+        state.estadoHoy = estado;
+        actualizarUIFichaje();
+        iniciarAnillo();
+      }).catch(() => {});
       if (res.tipo === 'SALIDA' && !isIOS) iniciarTimerDescanso();
     }
-  } catch (err) {
-    toast('❌ ' + err.message, 'error');
-  }
+  }).catch(err => {
+    // Si falla, revertir
+    toast('❌ Error al fichar: ' + err.message, 'error');
+    refreshEstado(); // revertir UI al estado real
+  });
+
+  document.getElementById('modal-confirmar')?.classList.add('hidden');
+}
+
+function aplicarFichajeOptimista(tipo) {
+  // Simular el nuevo fichaje en el estado local sin esperar al servidor
+  const s = state.estadoHoy || { totalFichajesHoy:0, fichajesHoy:[], proximoTipo:'ENTRADA' };
+  const nuevaHora = horaActual();
+  const nuevosFichajes = [...(s.fichajesHoy||[]), { Tipo: tipo, Hora: nuevaHora }];
+  const nuevoTotal = (s.totalFichajesHoy||0) + 1;
+  state.estadoHoy = {
+    ...s,
+    totalFichajesHoy: nuevoTotal,
+    fichajesHoy:      nuevosFichajes,
+    proximoTipo:      tipo === 'ENTRADA' ? 'SALIDA' : 'ENTRADA',
+    ultimoTipo:       tipo,
+    ultimaHora:       nuevaHora
+  };
+  actualizarUIFichaje();
+  iniciarAnillo();
 }
 
 // ── FICHAJE MANUAL ────────────────────────────────────────────────
 function abrirFichajeManual() {
-  document.getElementById('manual-fecha').value    = fechaHoy();
-  document.getElementById('manual-hora').value     = horaActual();
+  document.getElementById('manual-fecha').value = fechaHoy();
+  document.getElementById('manual-hora').value  = horaActual();
   document.getElementById('manual-comentario').value = '';
   document.getElementById('modal-manual')?.classList.remove('hidden');
 }
@@ -340,18 +405,13 @@ async function enviarFichajeManual() {
   const comentario = document.getElementById('manual-comentario')?.value?.trim() || '';
   if (!fecha || !hora) { toast('Indica fecha y hora', 'error'); return; }
   try {
-    const res = await api('fichar', {
-      fecha, hora, comentario,
-      ubicacionId: '', ubicacionNombre: '', metodo: 'MANUAL'
-    });
+    const res = await api('fichar', { fecha, hora, comentario, ubicacionId:'', ubicacionNombre:'', metodo:'MANUAL' });
     if (res.ok) {
       toast('✅ ' + res.tipo + ' manual registrada', 'ok');
       document.getElementById('modal-manual')?.classList.add('hidden');
       await refreshEstado();
     }
-  } catch (err) {
-    toast('❌ ' + err.message, 'error');
-  }
+  } catch (err) { toast('❌ ' + err.message, 'error'); }
 }
 
 // ── TIMER DESCANSO (solo Android) ─────────────────────────────────
@@ -365,35 +425,29 @@ function iniciarTimerDescanso() {
   state.timerInterval = setInterval(() => {
     state.timerSeconds--;
     actualizarTimerDisplay();
-    if (state.timerSeconds <= 0) {
-      clearInterval(state.timerInterval);
-      toast('⏰ Descanso completado. ¡Hora de volver!', 'warning');
-    }
+    if (state.timerSeconds <= 0) { clearInterval(state.timerInterval); toast('⏰ Descanso completado. ¡Hora de volver!','warning'); }
   }, 1000);
 }
-
 function actualizarTimerDisplay() {
   const el = document.getElementById('timer-display'); if (!el) return;
-  el.textContent = String(Math.floor(state.timerSeconds/60)).padStart(2,'0') + ':' +
-                   String(state.timerSeconds%60).padStart(2,'0');
+  el.textContent = String(Math.floor(state.timerSeconds/60)).padStart(2,'0')+':'+String(state.timerSeconds%60).padStart(2,'0');
 }
 
 // ── MIS FICHAJES ──────────────────────────────────────────────────
 async function cargarMisFichajes() {
   const input = document.getElementById('filter-mes'); if (!input) return;
   const hoy = new Date();
-  if (!input.value) input.value = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0');
+  if (!input.value) input.value = hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0');
   input.onchange = () => cargarMisFichajes();
   const lista = document.getElementById('lista-fichajes'); if (!lista) return;
   lista.innerHTML = '<div class="empty-state">Cargando…</div>';
   try {
     const data = await api('getFichajes', { mes: input.value });
-    if (!data.length) { lista.innerHTML = '<div class="empty-state">Sin fichajes este mes</div>'; return; }
+    if (!data.length) { lista.innerHTML='<div class="empty-state">Sin fichajes este mes</div>'; return; }
     const porDia = {};
-    data.forEach(f => { if (!porDia[f.Fecha]) porDia[f.Fecha] = []; porDia[f.Fecha].push(f); });
+    data.forEach(f => { if (!porDia[f.Fecha]) porDia[f.Fecha]=[]; porDia[f.Fecha].push(f); });
     lista.innerHTML = Object.keys(porDia).sort().reverse().map(fecha => {
-      const fd    = porDia[fecha];
-      const horas = calcularHorasDia(fd);
+      const fd = porDia[fecha]; const horas = calcularHorasDia(fd);
       const filas = fd.map(f => `
         <div class="fichaje-row">
           <span class="fichaje-tipo-dot">${f.Tipo==='ENTRADA'?'🟢':'🔴'}</span>
@@ -408,9 +462,7 @@ async function cargarMisFichajes() {
           ${horas?`<span class="dia-horas">${horas}</span>`:''}
         </div>${filas}</div>`;
     }).join('');
-  } catch (err) {
-    lista.innerHTML = '<div class="empty-state error">Error: ' + err.message + '</div>';
-  }
+  } catch (err) { lista.innerHTML='<div class="empty-state error">Error: '+err.message+'</div>'; }
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────
@@ -419,22 +471,22 @@ async function cargarDashboard() {
     const año = new Date().getFullYear();
     const dashAño = document.getElementById('dash-año'); if (dashAño) dashAño.textContent = año;
     const resumen = await api('getResumen', { año });
-    const obj  = parseInt(state.empleado?.Horas_Anuales || 1770);
-    const real = resumen.horasRealizadas || 0;
-    const pct  = Math.min(100, Math.round((real/obj)*100));
-    const barra = document.getElementById('dash-barra-anual'); if (barra) barra.style.width = pct+'%';
-    const hReal = document.getElementById('dash-horas-real'); if (hReal) hReal.textContent = real+'h';
-    const hObj  = document.getElementById('dash-horas-obj');  if (hObj)  hObj.textContent  = '/ '+obj+'h';
-    const dif = real-obj; const difEl = document.getElementById('dash-diferencial');
-    if (difEl) { difEl.textContent = (dif>=0?'+':'')+dif+'h'; difEl.className='diferencial '+(dif>=0?'pos':'neg'); }
+    const obj = parseInt(state.empleado?.Horas_Anuales||1770);
+    const real = resumen.horasRealizadas||0;
+    const pct  = Math.min(100,Math.round((real/obj)*100));
+    const barra = document.getElementById('dash-barra-anual'); if (barra) barra.style.width=pct+'%';
+    const hReal = document.getElementById('dash-horas-real'); if (hReal) hReal.textContent=real+'h';
+    const hObj  = document.getElementById('dash-horas-obj');  if (hObj)  hObj.textContent='/ '+obj+'h';
+    const dif=real-obj; const difEl=document.getElementById('dash-diferencial');
+    if (difEl) { difEl.textContent=(dif>=0?'+':'')+dif+'h'; difEl.className='diferencial '+(dif>=0?'pos':'neg'); }
     if (resumen.semana) renderSemana(resumen.semana);
-  } catch (err) { console.error('Dashboard error:', err); }
+  } catch(err) { console.error('Dashboard:', err); }
 }
 
 function renderSemana(dias) {
   const cont = document.getElementById('semana-bars'); if (!cont) return;
   const names = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
-  const max = Math.max(...dias.map(d=>d.minutos||0), 1);
+  const max = Math.max(...dias.map(d=>d.minutos||0),1);
   cont.innerHTML = dias.map((d,i) => `
     <div class="semana-col">
       <div class="semana-bar-wrap"><div class="semana-bar" style="height:${Math.round(((d.minutos||0)/max)*100)}%"></div></div>
@@ -460,31 +512,37 @@ async function cargarEmpleados() {
         </div>
         <button class="btn btn-sm btn-ghost" onclick="editarEmpleado('${emp.ID_Empleado}')">✏️</button>
       </div>`).join('') || '<div class="empty-state">Sin empleados</div>';
-    document.getElementById('btn-nuevo-empleado')?.addEventListener('click', () => abrirFormEmpleado(null));
-  } catch (err) {
-    lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>';
-  }
+    // onclick en vez de addEventListener para evitar acumulación de listeners
+    const btnNuevo = document.getElementById('btn-nuevo-empleado');
+    if (btnNuevo) btnNuevo.onclick = () => abrirFormEmpleado(null);
+  } catch(err) { lista.innerHTML='<div class="empty-state error">'+err.message+'</div>'; }
 }
 
 function abrirFormEmpleado(emp) {
   document.getElementById('emp-form-titulo').textContent = emp ? 'Editar Empleado' : 'Nuevo Empleado';
-  document.getElementById('emp-id').value        = emp?.ID_Empleado      || '';
-  document.getElementById('emp-nombre').value    = emp?.Nombre_Completo  || '';
-  document.getElementById('emp-numero').value    = emp?.Numero_Empleado  || '';
-  document.getElementById('emp-email').value     = emp?.Email            || '';
-  document.getElementById('emp-tgid').value      = emp?.Telegram_ID      || '';
-  document.getElementById('emp-rol').value       = emp?.Rol              || 'empleado';
-  document.getElementById('emp-notif').value     = emp?.Notificaciones   || 'privado';
-  document.getElementById('emp-horas').value     = emp?.Horas_Anuales    || '1770';
-  document.getElementById('emp-alarma').value    = emp?.Alarma_Descanso  || '25';
-  document.getElementById('emp-confirmar').value = emp?.Confirmar_Fichaje|| 'true';
+  document.getElementById('emp-id').value          = emp?.ID_Empleado       || '';
+  document.getElementById('emp-nombre').value      = emp?.Nombre_Completo   || '';
+  document.getElementById('emp-numero').value      = emp?.Numero_Empleado   || '';
+  document.getElementById('emp-email').value       = emp?.Email             || '';
+  document.getElementById('emp-tgid').value        = emp?.Telegram_ID       || '';
+  document.getElementById('emp-rol').value         = emp?.Rol               || 'empleado';
+  document.getElementById('emp-notif').value       = emp?.Notificaciones    || 'privado';
+  document.getElementById('emp-horas').value       = emp?.Horas_Anuales     || '1770';
+  document.getElementById('emp-jornada-base').value= emp?.Jornada_Base_Dia  || '6.5';
+  document.getElementById('emp-objetivo-dia').value= emp?.Objetivo_Dia      || '7.5';
+  document.getElementById('emp-alarma').value      = emp?.Alarma_Descanso   || '25';
+  document.getElementById('emp-q1').value          = emp?.Q1                || '';
+  document.getElementById('emp-q2').value          = emp?.Q2                || '';
+  document.getElementById('emp-q3').value          = emp?.Q3                || '';
+  document.getElementById('emp-q4').value          = emp?.Q4                || '';
+  document.getElementById('emp-confirmar').value   = emp?.Confirmar_Fichaje || 'true';
   document.getElementById('modal-empleado')?.classList.remove('hidden');
   document.getElementById('emp-cancel').onclick = () => document.getElementById('modal-empleado')?.classList.add('hidden');
   document.getElementById('emp-save').onclick   = guardarEmpleadoForm;
 }
 
 function editarEmpleado(id) {
-  const emp = state.empleados.find(e => e.ID_Empleado === id);
+  const emp = state.empleados.find(e => e.ID_Empleado===id);
   if (emp) abrirFormEmpleado(emp);
 }
 
@@ -499,13 +557,19 @@ async function guardarEmpleadoForm() {
       rol:              document.getElementById('emp-rol').value,
       notificaciones:   document.getElementById('emp-notif').value,
       horasAnuales:     document.getElementById('emp-horas').value,
+      jornadaBase:      document.getElementById('emp-jornada-base').value,
+      objetivoDia:      document.getElementById('emp-objetivo-dia').value,
       alarmaDescanso:   document.getElementById('emp-alarma').value,
       confirmarFichaje: document.getElementById('emp-confirmar').value,
+      Q1:               document.getElementById('emp-q1').value,
+      Q2:               document.getElementById('emp-q2').value,
+      Q3:               document.getElementById('emp-q3').value,
+      Q4:               document.getElementById('emp-q4').value,
     });
-    toast('✅ Empleado guardado', 'ok');
+    toast('✅ Empleado guardado','ok');
     document.getElementById('modal-empleado')?.classList.add('hidden');
     await cargarEmpleados();
-  } catch (err) { toast('❌ ' + err.message, 'error'); }
+  } catch(err) { toast('❌ '+err.message,'error'); }
 }
 
 // ── ADMIN: UBICACIONES ────────────────────────────────────────────
@@ -516,17 +580,11 @@ async function cargarUbicaciones() {
     state.ubicaciones = await api('getUbicaciones');
     lista.innerHTML = state.ubicaciones.map(u => `
       <div class="admin-card">
-        <div class="admin-card-info">
-          <span>📍</span>
-          <div>
-            <div class="admin-card-name">${u.Nombre}</div>
-            <div class="admin-card-sub">${u.Descripcion||''}</div>
-          </div>
+        <div class="admin-card-info"><span>📍</span>
+          <div><div class="admin-card-name">${u.Nombre}</div><div class="admin-card-sub">${u.Descripcion||''}</div></div>
         </div>
       </div>`).join('') || '<div class="empty-state">Sin ubicaciones</div>';
-  } catch (err) {
-    lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>';
-  }
+  } catch(err) { lista.innerHTML='<div class="empty-state error">'+err.message+'</div>'; }
 }
 
 // ── INCIDENCIAS ───────────────────────────────────────────────────
@@ -535,94 +593,56 @@ async function cargarIncidencias() {
   lista.innerHTML = '<div class="empty-state">Cargando…</div>';
   try {
     const data = await api('getIncidencias');
-    if (!data.length) { lista.innerHTML = '<div class="empty-state">Sin incidencias</div>'; return; }
+    if (!data.length) { lista.innerHTML='<div class="empty-state">Sin incidencias</div>'; return; }
     lista.innerHTML = data.map(inc => `
       <div class="admin-card">
-        <div class="admin-card-info">
-          <span>⚠️</span>
-          <div>
-            <div class="admin-card-name">${inc.Tipo_Incidencia} — ${inc.Fecha}</div>
-            <div class="admin-card-sub">${inc.Descripcion}</div>
-          </div>
+        <div class="admin-card-info"><span>⚠️</span>
+          <div><div class="admin-card-name">${inc.Tipo_Incidencia} — ${inc.Fecha}</div><div class="admin-card-sub">${inc.Descripcion}</div></div>
         </div>
         <span class="badge ${inc.Estado==='resuelta'?'ok':'warn'}">${inc.Estado}</span>
       </div>`).join('');
-  } catch (err) {
-    lista.innerHTML = '<div class="empty-state error">' + err.message + '</div>';
-  }
+  } catch(err) { lista.innerHTML='<div class="empty-state error">'+err.message+'</div>'; }
 }
 
 // ── UTILIDADES ────────────────────────────────────────────────────
-function ocultarPantallas() {
-  document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
-}
+function ocultarPantallas() { document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active')); }
 function mostrarErrorInicio(msg) {
-  ocultarPantallas();
-  document.getElementById('screen-login')?.classList.add('active');
+  ocultarPantallas(); document.getElementById('screen-login')?.classList.add('active');
   const s = document.getElementById('login-status');
-  if (s) { s.textContent = msg; s.className = 'login-status error'; }
+  if (s) { s.textContent=msg; s.className='login-status error'; }
 }
-function toast(msg, tipo='ok') {
-  const el = document.getElementById('toast'); if (!el) return;
-  el.textContent = msg; el.className = 'toast show ' + tipo;
-  setTimeout(() => el.className = 'toast hidden', 2800);
+function toast(msg,tipo='ok') {
+  const el=document.getElementById('toast'); if (!el) return;
+  el.textContent=msg; el.className='toast show '+tipo;
+  setTimeout(()=>el.className='toast hidden',2800);
 }
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function horaActual() {
-  const n = new Date();
-  return String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0');
-}
-function fechaHoy() {
-  const n = new Date();
-  return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
-}
+function sleep(ms)      { return new Promise(r=>setTimeout(r,ms)); }
+function horaActual()   { const n=new Date(); return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0'); }
+function fechaHoy()     { const n=new Date(); return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0'); }
+function toMins(h)      { if (!h) return 0; const p=h.split(':').map(Number); return p[0]*60+(p[1]||0); }
+function formatMins(m)  { return Math.floor(m/60)+'h'+(m%60?' '+m%60+'m':''); }
 function formatearFecha(str) {
-  if (!str) return '';
-  const [y,m,d] = str.split('-').map(Number);
+  if (!str) return ''; const [y,m,d]=str.split('-').map(Number);
   return new Date(y,m-1,d).toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'});
 }
-function toMins(h) {
-  if (!h) return 0;
-  const p = h.split(':').map(Number);
-  return p[0]*60 + (p[1]||0);
-}
-function formatMins(m) {
-  return Math.floor(m/60)+'h'+(m%60?' '+m%60+'m':'');
-}
 function calcularHorasDia(fichajes) {
-  if (!Array.isArray(fichajes) || fichajes.length < 2) return null;
-  const ord = [...fichajes].sort((a,b)=>(a.Hora||'').localeCompare(b.Hora||''));
-  let mins = 0;
-  for (let i=0; i<ord.length-1; i+=2) {
-    if (ord[i].Tipo==='ENTRADA' && ord[i+1]?.Tipo==='SALIDA')
-      mins += toMins(ord[i+1].Hora) - toMins(ord[i].Hora);
+  if (!Array.isArray(fichajes)||fichajes.length<2) return null;
+  const ord=[...fichajes].sort((a,b)=>(a.Hora||'').localeCompare(b.Hora||''));
+  let mins=0;
+  for (let i=0;i<ord.length-1;i+=2) {
+    if (ord[i].Tipo==='ENTRADA'&&ord[i+1]?.Tipo==='SALIDA') mins+=toMins(ord[i+1].Hora)-toMins(ord[i].Hora);
   }
-  return mins > 0 ? formatMins(mins) : null;
-}
-function calcularHorasAcumuladas(fichajes) {
-  if (!Array.isArray(fichajes) || !fichajes.length) return null;
-  const ord = [...fichajes].sort((a,b)=>(a.Hora||'').localeCompare(b.Hora||''));
-  let mins = 0;
-  for (let i=0; i<ord.length-1; i+=2) {
-    if (ord[i].Tipo==='ENTRADA' && ord[i+1]?.Tipo==='SALIDA')
-      mins += toMins(ord[i+1].Hora) - toMins(ord[i].Hora);
-  }
-  // Entrada abierta → sumar hasta ahora
-  if (ord.length%2!==0 && ord[ord.length-1].Tipo==='ENTRADA')
-    mins += toMins(horaActual()) - toMins(ord[ord.length-1].Hora);
-  return mins > 0 ? formatMins(mins) : null;
+  return mins>0?formatMins(mins):null;
 }
 function iniciarReloj() {
-  const tick = () => {
-    const now = new Date();
-    const t = document.getElementById('clock-time');
-    if (t) t.textContent = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
-    const d = document.getElementById('clock-date');
-    if (d) d.textContent = now.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
+  const tick=()=>{
+    const now=new Date();
+    const t=document.getElementById('clock-time');
+    if (t) t.textContent=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    const d=document.getElementById('clock-date');
+    if (d) d.textContent=now.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
   };
-  tick();
-  clearInterval(window.__clockInt);
-  window.__clockInt = setInterval(tick, 1000);
+  tick(); clearInterval(window.__clockInt); window.__clockInt=setInterval(tick,1000);
 }
 
 window.api = api;
