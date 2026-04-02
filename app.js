@@ -336,9 +336,8 @@ function actualizarAnillo() {
 
   function calcOffset(tramo, desde) {
     const longitud = (tramo / minsMax) * CIRC;
-    const offset   = (desde / minsMax) * CIRC;
-    // dashoffset positivo = el tramo empieza en esa posición del arco
-    return { dasharray: longitud + ' ' + CIRC, dashoffset: offset };
+    const rotDeg   = (desde / minsMax) * 360; // rotación al punto de inicio
+    return { dasharray: longitud + ' ' + CIRC, rotDeg: rotDeg };
   }
 
   setRingSegment('ring-base',  calcOffset(minsTramoBase,    0));
@@ -349,7 +348,10 @@ function actualizarAnillo() {
 function setRingSegment(id, props) {
   const el = document.getElementById(id); if (!el) return;
   el.style.strokeDasharray  = props.dasharray;
-  el.style.strokeDashoffset = props.dashoffset;
+  el.style.strokeDashoffset = '0';
+  // Rotar el círculo a su posición de inicio en el anillo
+  el.style.transform       = 'rotate(' + props.rotDeg + 'deg)';
+  el.style.transformOrigin = '50% 50%';
 }
 
 function calcularMinsAcumulados(fichajes) {
