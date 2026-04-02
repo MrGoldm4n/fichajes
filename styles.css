@@ -365,3 +365,19 @@ html, body {
 /* ── EMPTY STATE ── */
 .empty-state       { text-align: center; color: var(--text2); padding: 40px 16px; font-size: 14px; }
 .empty-state.error { color: var(--red); }
+
+/* ── LEYENDA ANILLO ──────────────────────────────────────────────── */
+.ring-leyenda {
+  display: flex; flex-direction: column; gap: 3px;
+  align-items: flex-start;
+}
+.ring-leyenda-item {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--text2);
+}
+.ring-leyenda-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.ring-leyenda-item.base   .ring-leyenda-dot { background: var(--accent); }
+.ring-leyenda-item.bolsa  .ring-leyenda-dot { background: var(--green); }
+.ring-leyenda-item.extra  .ring-leyenda-dot { background: var(--orange); }
