@@ -312,8 +312,9 @@ function actualizarAnillo() {
   const emp = state.empleado;
   if (!emp) return;
 
-  const jornadaBase = parseFloat(emp.Jornada_Base_Dia || '6.5');
-  const objetivo    = parseFloat(emp.Objetivo_Dia     || '7.5');
+  // FIX: parseFloat(x)||n en vez de parseFloat(x||'n') — evita NaN si x es " " (truthy no-numérico)
+  const jornadaBase = parseFloat(emp.Jornada_Base_Dia) > 0 ? parseFloat(emp.Jornada_Base_Dia) : 6.5;
+  const objetivo    = parseFloat(emp.Objetivo_Dia)     > 0 ? parseFloat(emp.Objetivo_Dia)     : 7.5;
   const minsBase    = jornadaBase * 60;
   const minsObj     = objetivo * 60;
 
@@ -331,7 +332,7 @@ function actualizarAnillo() {
   if (wrap) { enCurso ? wrap.classList.add('fichado') : wrap.classList.remove('fichado'); }
 
   // El anillo representa max(objetivo, real) para que nunca se desborde
-  const minsMax = Math.max(minsObj, minsReal, 1);
+  const minsMax = Math.max(isNaN(minsObj) ? 1 : minsObj, isNaN(minsReal) ? 0 : minsReal, 1);
 
   // Proporciones de cada tramo (0..1)
   const p0     = 0;
@@ -348,7 +349,7 @@ function actualizarAnillo() {
 // Centro (110,110), radio 96, empieza en las 12 en punto
 function dibujarArco(id, p1, p2) {
   const el = document.getElementById(id); if (!el) return;
-  if (p2 - p1 < 0.001) { el.setAttribute('d', ''); return; }
+  if (isNaN(p1) || isNaN(p2) || p2 - p1 < 0.001) { el.setAttribute('d', ''); return; }
   // Clamp p2 para evitar arco degenerado (inicio==fin cuando p2=1.0)
   const p2c = Math.min(p2, 0.9999);
   const cx = 110, cy = 110, r = 96;
