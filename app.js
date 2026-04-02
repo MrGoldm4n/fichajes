@@ -343,6 +343,25 @@ function actualizarAnillo() {
   dibujarArco('ring-base',  p0,     pBase);
   dibujarArco('ring-bolsa', pBase,  pVerde);
   dibujarArco('ring-extra', pVerde, pTotal);
+
+  // Leyenda dinámica
+  actualizarLeyenda(jornadaBase, objetivo, minsReal);
+}
+
+function actualizarLeyenda(jornadaBase, objetivo, minsReal) {
+  const el = document.getElementById('ring-leyenda'); if (!el) return;
+  const bolsa = objetivo - jornadaBase;
+  const exceso = Math.max(0, minsReal - objetivo * 60);
+  const items = [
+    { clase: 'base',  texto: 'Jornada ' + jornadaBase + 'h' },
+    { clase: 'bolsa', texto: 'Bolsa +' + bolsa + 'h' },
+  ];
+  if (exceso > 0) items.push({ clase: 'extra', texto: 'Exceso bolsa ' + formatMins(exceso) });
+  el.innerHTML = items.map(i =>
+    '<div class="ring-leyenda-item ' + i.clase + '">' +
+    '<span class="ring-leyenda-dot"></span>' +
+    '<span>' + i.texto + '</span></div>'
+  ).join('');
 }
 
 // Dibuja un arco SVG de p1 a p2 (proporciones 0..1) sin transforms
