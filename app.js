@@ -48,14 +48,57 @@ function desbloquearBtn(id){ const el = document.getElementById(id); if (el) { e
 // ── ARRANQUE ──────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
   try {
-    if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor('#0d0d1a'); tg.setBackgroundColor('#0d0d1a'); }
-    await sleep(500);
+    if (tg) { tg.ready(); tg.expand(); } // setHeaderColor/setBackgroundColor eliminados (warnings v6)
+
+    // ⚡ ARRANQUE INSTANTÁNEO — mostrar UI con cache inmediatamente
+    const cachedEmp    = cacheGet('fichajes_emp');
+    const cachedUbic   = cacheGet('fichajes_ubic',    30*60*1000);
+    const cachedCfg    = cacheGet('fichajes_cfg',     30*60*1000);
+    const cachedEstado = cacheGet('fichajes_estado',  60*1000); // TTL 1 min
+
+    if (cachedEmp) {
+      state.empleado    = cachedEmp;
+      state.ubicaciones = cachedUbic || [];
+      state.config      = cachedCfg  || {};
+      state.estadoHoy   = cachedEstado || null;
+      montarUI();                   // UI instantánea con datos del cache
+      refrescarEnSegundoPlano();    // servidor en paralelo, sin bloquear
+      return;
+    }
+
+    // Primera vez (sin cache): flujo normal
     if (tg?.initDataUnsafe?.user?.id) { await arrancarApp(); return; }
-    const saved = cacheGet('fichajes_emp');
-    if (saved) { state.empleado = saved; await arrancarApp(true); return; }
     mostrarLoginGoogle();
   } catch (err) { console.error(err); mostrarErrorInicio(err.message); }
 });
+
+// Refresca datos del servidor sin bloquear la UI
+async function refrescarEnSegundoPlano() {
+  try {
+    const telegramId  = tg?.initDataUnsafe?.user?.id || '';
+    const emailGoogle = state.empleado?.emailGoogle || '';
+    const res  = await fetch(APPS_SCRIPT_URL + '?' + new URLSearchParams({ action:'init', telegramId, emailGoogle }), { redirect:'follow' });
+    const init = await res.json();
+    if (init.error) return;
+
+    state.empleado    = { ...state.empleado, ...init.empleado };
+    state.ubicaciones = init.ubicaciones || state.ubicaciones;
+    state.config      = init.config      || state.config;
+    state.estadoHoy   = init.estado;
+
+    cacheSet('fichajes_emp',    state.empleado);
+    cacheSet('fichajes_ubic',   state.ubicaciones);
+    cacheSet('fichajes_cfg',    state.config);
+    cacheSet('fichajes_estado', state.estadoHoy);
+
+    // Actualizar UI con datos frescos del servidor
+    actualizarUIEmpleado(state.empleado);
+    actualizarUIFichaje();
+    iniciarAnillo();
+    if (state.empleado.Rol?.toLowerCase() === 'admin')
+      document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+  } catch (e) { /* silencioso, no romper UI */ }
+}
 
 // ── LOGIN GOOGLE ──────────────────────────────────────────────────
 function mostrarLoginGoogle() {
@@ -89,7 +132,7 @@ async function handleGoogleLogin(response) {
   }
 }
 
-// ── ARRANCAR APP ⚡ (1 sola llamada) ──────────────────────────────
+// ── ARRANCAR APP (primera vez, sin cache) ─────────────────────────
 async function arrancarApp(yaAutenticado = false) {
   try {
     const telegramId  = tg?.initDataUnsafe?.user?.id || '';
@@ -101,22 +144,22 @@ async function arrancarApp(yaAutenticado = false) {
     state.empleado    = yaAutenticado ? { ...state.empleado, ...init.empleado } : init.empleado;
     state.ubicaciones = init.ubicaciones || [];
     state.config      = init.config      || {};
-    state.estadoHoy   = init.estado;     // ← FIX: fichajesHoy ya viene aquí
+    state.estadoHoy   = init.estado;
 
-    cacheSet('fichajes_emp',  state.empleado);
-    cacheSet('fichajes_ubic', state.ubicaciones);
-    cacheSet('fichajes_cfg',  state.config);
+    cacheSet('fichajes_emp',    state.empleado);
+    cacheSet('fichajes_ubic',   state.ubicaciones);
+    cacheSet('fichajes_cfg',    state.config);
+    cacheSet('fichajes_estado', state.estadoHoy);
   } catch (err) {
-    // Fallback a cache si el backend falla
-    const cu = cacheGet('fichajes_ubic', 30*60*1000);
-    const cc = cacheGet('fichajes_cfg',  30*60*1000);
-    if (cu) state.ubicaciones = cu;
-    if (cc) state.config      = cc;
     if (!state.empleado) throw err;
     state.estadoHoy = await api('getEstado');
   }
+  montarUI();
+}
 
-  const emp = state.empleado;
+// Monta la UI con lo que hay en state (cache o servidor)
+function montarUI() {
+  const emp = state.empleado; if (!emp) return;
   actualizarUIEmpleado(emp);
 
   const locParam = tg?.initDataUnsafe?.start_param || new URLSearchParams(location.search).get('loc') || '';
@@ -135,7 +178,7 @@ async function arrancarApp(yaAutenticado = false) {
   iniciarReloj();
   setupNavegacion();
 
-  if (emp.Rol === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+  if (emp.Rol?.toLowerCase() === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
   const btnAlarma = document.getElementById('btn-alarma');
   if (btnAlarma) { isIOS ? btnAlarma.classList.add('hidden') : btnAlarma.classList.remove('hidden'); }
 }
@@ -311,7 +354,12 @@ function setRingSegment(id, props) {
 
 function calcularMinsAcumulados(fichajes) {
   if (!Array.isArray(fichajes) || !fichajes.length) return 0;
-  const ord = [...fichajes].sort((a,b) => (a.Hora||'').localeCompare(b.Hora||''));
+  // Normalizar: aceptar Tipo/tipo y Hora/hora en cualquier combinación
+  const norm = fichajes.map(f => ({
+    Tipo: (f.Tipo || f.tipo || '').toUpperCase(),
+    Hora: (f.Hora || f.hora || '').slice(0, 5)
+  }));
+  const ord = [...norm].sort((a,b) => (a.Hora||'').localeCompare(b.Hora||''));
   let mins = 0;
   for (let i = 0; i < ord.length - 1; i += 2) {
     if (ord[i].Tipo === 'ENTRADA' && ord[i+1]?.Tipo === 'SALIDA')
