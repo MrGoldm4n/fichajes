@@ -51,16 +51,17 @@ window.addEventListener('load', async () => {
     if (tg) { tg.ready(); tg.expand(); } // setHeaderColor/setBackgroundColor eliminados (warnings v6)
 
     // ⚡ ARRANQUE INSTANTÁNEO — mostrar UI con cache inmediatamente
-    const cachedEmp    = cacheGet('fichajes_emp');
-    const cachedUbic   = cacheGet('fichajes_ubic',    30*60*1000);
-    const cachedCfg    = cacheGet('fichajes_cfg',     30*60*1000);
-    const cachedEstado = cacheGet('fichajes_estado',  60*1000); // TTL 1 min
+    const cachedEmp  = cacheGet('fichajes_emp');
+    const cachedUbic = cacheGet('fichajes_ubic', 30*60*1000);
+    const cachedCfg  = cacheGet('fichajes_cfg',  30*60*1000);
+    // Estado del día NUNCA desde cache — siempre fresco del servidor
+    // para garantizar que fichajesHoy y el rosco estén correctos
 
     if (cachedEmp) {
       state.empleado    = cachedEmp;
       state.ubicaciones = cachedUbic || [];
       state.config      = cachedCfg  || {};
-      state.estadoHoy   = cachedEstado || null;
+      state.estadoHoy   = null; // forzar refresh siempre
       montarUI();                   // UI instantánea con datos del cache
       refrescarEnSegundoPlano();    // servidor en paralelo, sin bloquear
       return;
@@ -89,7 +90,7 @@ async function refrescarEnSegundoPlano() {
     cacheSet('fichajes_emp',    state.empleado);
     cacheSet('fichajes_ubic',   state.ubicaciones);
     cacheSet('fichajes_cfg',    state.config);
-    cacheSet('fichajes_estado', state.estadoHoy);
+    // estado no se cachea — siempre fresco del servidor
 
     // Actualizar UI con datos frescos del servidor
     actualizarUIEmpleado(state.empleado);
@@ -149,7 +150,7 @@ async function arrancarApp(yaAutenticado = false) {
     cacheSet('fichajes_emp',    state.empleado);
     cacheSet('fichajes_ubic',   state.ubicaciones);
     cacheSet('fichajes_cfg',    state.config);
-    cacheSet('fichajes_estado', state.estadoHoy);
+    // estado no se cachea — siempre fresco del servidor
   } catch (err) {
     if (!state.empleado) throw err;
     state.estadoHoy = await api('getEstado');
@@ -347,15 +348,17 @@ function actualizarAnillo() {
 // Centro (110,110), radio 96, empieza en las 12 en punto
 function dibujarArco(id, p1, p2) {
   const el = document.getElementById(id); if (!el) return;
-  if (p2 - p1 < 0.0015) { el.setAttribute('d', ''); return; }
+  if (p2 - p1 < 0.001) { el.setAttribute('d', ''); return; }
+  // Clamp p2 para evitar arco degenerado (inicio==fin cuando p2=1.0)
+  const p2c = Math.min(p2, 0.9999);
   const cx = 110, cy = 110, r = 96;
-  const t1 = -Math.PI / 2 + p1 * 2 * Math.PI;
-  const t2 = -Math.PI / 2 + p2 * 2 * Math.PI;
+  const t1 = -Math.PI / 2 + p1  * 2 * Math.PI;
+  const t2 = -Math.PI / 2 + p2c * 2 * Math.PI;
   const x1 = cx + r * Math.cos(t1);
   const y1 = cy + r * Math.sin(t1);
   const x2 = cx + r * Math.cos(t2);
   const y2 = cy + r * Math.sin(t2);
-  const large = (p2 - p1) > 0.5 ? 1 : 0;
+  const large = (p2c - p1) > 0.5 ? 1 : 0;
   el.setAttribute('d', 'M ' + x1.toFixed(3) + ' ' + y1.toFixed(3) +
     ' A ' + r + ' ' + r + ' 0 ' + large + ' 1 ' + x2.toFixed(3) + ' ' + y2.toFixed(3));
 }
