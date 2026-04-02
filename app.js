@@ -349,9 +349,9 @@ function setRingSegment(id, props) {
   const el = document.getElementById(id); if (!el) return;
   el.style.strokeDasharray  = props.dasharray;
   el.style.strokeDashoffset = '0';
-  // Rotar el círculo a su posición de inicio en el anillo
-  el.style.transform       = 'rotate(' + props.rotDeg + 'deg)';
-  el.style.transformOrigin = '50% 50%';
+  // SVG setAttribute con centro explícito (110,110) = centro del viewBox 220x220
+  // Evita el problema de transform-origin en SVG via CSS
+  el.setAttribute('transform', 'rotate(' + props.rotDeg + ', 110, 110)');
 }
 
 function calcularMinsAcumulados(fichajes) {
