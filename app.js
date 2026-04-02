@@ -2,7 +2,7 @@
 const GOOGLE_CLIENT_ID = '920497100034-08on4kifjrp7l80doe6ucs49ahop5v8c.apps.googleusercontent.com';
 const tg    = window.Telegram?.WebApp;
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-const CIRC  = 2 * Math.PI * 96; // circunferencia del anillo (r=96) ≈ 603
+// Ring: usamos paths SVG calculados, no dasharray/transforms
 
 const state = {
   empleado: null, ubicacion: null, estadoHoy: null,
@@ -320,38 +320,44 @@ function actualizarAnillo() {
   const minsReal = calcularMinsAcumulados(fichajes);
   const enCurso  = s && s.proximoTipo === 'SALIDA';
 
-  // Actualizar contador también aquí (sincronía)
+  // Contador en vivo
   const valorEl  = document.getElementById('trabajado-valor');
   const estadoEl = document.getElementById('trabajado-estado');
   if (valorEl) valorEl.textContent = minsReal > 0 ? formatMins(minsReal) : '—';
   if (estadoEl) estadoEl.textContent = enCurso ? '▶' : (minsReal > 0 ? '⏸' : '');
 
-  const minsMax = Math.max(minsObj, minsReal, 1);
-  const wrap    = document.querySelector('.ring-wrap');
+  const wrap = document.querySelector('.ring-wrap');
   if (wrap) { enCurso ? wrap.classList.add('fichado') : wrap.classList.remove('fichado'); }
 
-  const minsTramoBase    = Math.min(minsReal, minsBase);
-  const minsTramoVerde   = minsReal > minsBase ? Math.min(minsReal - minsBase, minsObj - minsBase) : 0;
-  const minsTramoNaranja = minsReal > minsObj  ? minsReal - minsObj : 0;
+  // El anillo representa max(objetivo, real) para que nunca se desborde
+  const minsMax = Math.max(minsObj, minsReal, 1);
 
-  function calcOffset(tramo, desde) {
-    const longitud = (tramo / minsMax) * CIRC;
-    const rotDeg   = (desde / minsMax) * 360; // rotación al punto de inicio
-    return { dasharray: longitud + ' ' + CIRC, rotDeg: rotDeg };
-  }
+  // Proporciones de cada tramo (0..1)
+  const p0     = 0;
+  const pBase  = Math.min(minsReal, minsBase) / minsMax;
+  const pVerde = Math.min(minsReal, minsObj)  / minsMax;
+  const pTotal = minsReal / minsMax;
 
-  setRingSegment('ring-base',  calcOffset(minsTramoBase,    0));
-  setRingSegment('ring-bolsa', calcOffset(minsTramoVerde,   minsBase));
-  setRingSegment('ring-extra', calcOffset(minsTramoNaranja, minsObj));
+  dibujarArco('ring-base',  p0,     pBase);
+  dibujarArco('ring-bolsa', pBase,  pVerde);
+  dibujarArco('ring-extra', pVerde, pTotal);
 }
 
-function setRingSegment(id, props) {
+// Dibuja un arco SVG de p1 a p2 (proporciones 0..1) sin transforms
+// Centro (110,110), radio 96, empieza en las 12 en punto
+function dibujarArco(id, p1, p2) {
   const el = document.getElementById(id); if (!el) return;
-  el.style.strokeDasharray  = props.dasharray;
-  el.style.strokeDashoffset = '0';
-  // SVG setAttribute con centro explícito (110,110) = centro del viewBox 220x220
-  // Evita el problema de transform-origin en SVG via CSS
-  el.setAttribute('transform', 'rotate(' + props.rotDeg + ', 110, 110)');
+  if (p2 - p1 < 0.0015) { el.setAttribute('d', ''); return; }
+  const cx = 110, cy = 110, r = 96;
+  const t1 = -Math.PI / 2 + p1 * 2 * Math.PI;
+  const t2 = -Math.PI / 2 + p2 * 2 * Math.PI;
+  const x1 = cx + r * Math.cos(t1);
+  const y1 = cy + r * Math.sin(t1);
+  const x2 = cx + r * Math.cos(t2);
+  const y2 = cy + r * Math.sin(t2);
+  const large = (p2 - p1) > 0.5 ? 1 : 0;
+  el.setAttribute('d', 'M ' + x1.toFixed(3) + ' ' + y1.toFixed(3) +
+    ' A ' + r + ' ' + r + ' 0 ' + large + ' 1 ' + x2.toFixed(3) + ' ' + y2.toFixed(3));
 }
 
 function calcularMinsAcumulados(fichajes) {
