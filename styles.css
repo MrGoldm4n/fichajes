@@ -123,9 +123,10 @@ html, body {
   fill: none;
   stroke-width: 8;
   stroke-linecap: round;
-  stroke-dasharray: 603;
-  stroke-dashoffset: 603; /* oculto por defecto */
-  transition: stroke-dashoffset 0.6s ease, stroke-dasharray 0.6s ease;
+  stroke-dasharray: 0 603; /* oculto por defecto: dash=0 */
+  stroke-dashoffset: 0;
+  transition: stroke-dasharray 0.6s ease, transform 0.6s ease;
+  transform-origin: 50% 50%;
 }
 .ring-base  { stroke: var(--accent); }
 .ring-bolsa { stroke: var(--green); }
