@@ -820,21 +820,42 @@ async function cargarUbicaciones() {
   lista.innerHTML = '<div class="empty-state">Cargando…</div>';
   try {
     state.ubicaciones = await api('getUbicaciones');
-    lista.innerHTML = state.ubicaciones.map(u => `
-      <div class="admin-card">
+    const baseUrl = 'https://mrgoldm4n.github.io/fichajes/?loc=';
+    lista.innerHTML = state.ubicaciones.map(u => {
+      const nfc = u.NFC_Param || u.ID_Ubicacion;
+      const url = baseUrl + encodeURIComponent(nfc);
+      return `<div class="admin-card ubi-card">
         <div class="admin-card-info">
           <span style="font-size:18px">📍</span>
-          <div>
+          <div style="flex:1;min-width:0">
             <div class="admin-card-name">${u.Nombre}</div>
-            <div class="admin-card-sub">${u.Descripcion||''}</div>
-            <div class="admin-card-sub" style="font-size:10px;opacity:.6">NFC: ${u.NFC_Param||u.ID_Ubicacion}</div>
+            ${u.Descripcion?`<div class="admin-card-sub">${u.Descripcion}</div>`:''}
+            <div class="ubi-url-wrap">
+              <span class="ubi-url" title="${url}">${url}</span>
+              <button class="btn-copy" onclick="copiarUrl('${url}')" title="Copiar enlace NFC">📋</button>
+            </div>
           </div>
         </div>
         <button class="btn btn-sm btn-ghost" onclick="editarUbicacion('${u.ID_Ubicacion}')">✏️</button>
-      </div>`).join('') || '<div class="empty-state">Sin ubicaciones</div>';
+      </div>`;
+    }).join('') || '<div class="empty-state">Sin ubicaciones</div>';
     const btnNueva = document.getElementById('btn-nueva-ubicacion');
     if (btnNueva) btnNueva.onclick = () => abrirFormUbicacion(null);
   } catch(err) { lista.innerHTML='<div class="empty-state error">'+err.message+'</div>'; }
+}
+
+function copiarUrl(url) {
+  navigator.clipboard.writeText(url)
+    .then(() => toast('✅ Enlace copiado', 'ok'))
+    .catch(() => {
+      // Fallback para Telegram que puede bloquear clipboard
+      const ta = document.createElement('textarea');
+      ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      toast('✅ Enlace copiado', 'ok');
+    });
 }
 
 function abrirFormUbicacion(ubi) {
