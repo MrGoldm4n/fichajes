@@ -237,6 +237,12 @@ function setupNavegacion() {
 function mostrarPantalla(view) {
   ocultarPantallas();
   document.getElementById('screen-' + view)?.classList.add('active');
+  // Resetear contexto admin al volver a fichar o a empleados
+  if (view === 'fichar' || view === 'empleados') {
+    state._adminVerEmp = null;
+    const h = document.querySelector('#screen-mis-fichajes h2');
+    if (h) h.textContent = 'Mis Fichajes';
+  }
   if (view === 'mis-fichajes') cargarMisFichajes();
   if (view === 'dashboard')    cargarDashboard();
   if (view === 'empleados')    cargarEmpleados();
@@ -533,8 +539,11 @@ async function cargarMisFichajes() {
   input.onchange = () => cargarMisFichajes();
   const lista = document.getElementById('lista-fichajes'); if (!lista) return;
   lista.innerHTML = '<div class="empty-state">Cargando…</div>';
+  // Admin viendo fichajes de otro empleado
+  const params = { mes: input.value };
+  if (state._adminVerEmp) params.numEmp = state._adminVerEmp.id;
   try {
-    const data = await api('getFichajes', { mes: input.value });
+    const data = await api('getFichajes', params);
     if (!data.length) { lista.innerHTML='<div class="empty-state">Sin fichajes este mes</div>'; return; }
     const porDia = {};
     data.forEach(f => { if (!porDia[f.Fecha]) porDia[f.Fecha]=[]; porDia[f.Fecha].push(f); });
@@ -593,21 +602,61 @@ async function cargarEmpleados() {
   lista.innerHTML = '<div class="empty-state">Cargando…</div>';
   try {
     state.empleados = await api('getEmpleados');
-    lista.innerHTML = state.empleados.map(emp => `
-      <div class="admin-card">
+    if (!state.empleados.length) { lista.innerHTML='<div class="empty-state">Sin empleados</div>'; return; }
+    lista.innerHTML = state.empleados.map(emp => {
+      const ini  = (emp.Nombre_Completo||'').split(' ').filter(Boolean).slice(0,2).map(n=>n[0]).join('').toUpperCase();
+      const activo = emp.Activo?.toString() === 'true';
+      const esAdmin = emp.Rol?.toLowerCase() === 'admin';
+      return `<div class="admin-card ${activo?'':'emp-inactivo'}" id="emp-card-${emp.ID_Empleado}">
         <div class="admin-card-info">
-          <span class="avatar sm">${(emp.Nombre_Completo||'').split(' ').slice(0,2).map(n=>n[0]).join('').toUpperCase()}</span>
+          <span class="avatar sm ${activo?'':'avatar-inactivo'}">${ini}</span>
           <div>
-            <div class="admin-card-name">${emp.Nombre_Completo}</div>
-            <div class="admin-card-sub">${emp.Email||''} · ${emp.Rol}</div>
+            <div class="admin-card-name">
+              ${emp.Nombre_Completo}
+              <span class="badge-rol ${esAdmin?'admin':''}">${emp.Rol||'empleado'}</span>
+              ${!activo?'<span class="badge-inactivo">Inactivo</span>':''}
+            </div>
+            <div class="admin-card-sub">${emp.Email||''}</div>
+            <div class="admin-card-sub">${emp.Telegram_ID?'TG: '+emp.Telegram_ID:''}</div>
           </div>
         </div>
-        <button class="btn btn-sm btn-ghost" onclick="editarEmpleado('${emp.ID_Empleado}')">✏️</button>
-      </div>`).join('') || '<div class="empty-state">Sin empleados</div>';
-    // onclick en vez de addEventListener para evitar acumulación de listeners
+        <div class="emp-acciones">
+          <button class="btn btn-sm btn-ghost" title="Ver fichajes" onclick="verFichajesEmpleado('${emp.ID_Empleado}','${emp.Nombre_Completo}')">📋</button>
+          <button class="btn btn-sm btn-ghost" title="Editar" onclick="editarEmpleado('${emp.ID_Empleado}')">✏️</button>
+          <button class="btn btn-sm ${activo?'btn-ghost':'btn-primary'}" title="${activo?'Desactivar':'Activar'}"
+            onclick="toggleActivoEmpleado('${emp.ID_Empleado}',${activo})">${activo?'🔴':'🟢'}</button>
+        </div>
+      </div>`;
+    }).join('');
     const btnNuevo = document.getElementById('btn-nuevo-empleado');
     if (btnNuevo) btnNuevo.onclick = () => abrirFormEmpleado(null);
   } catch(err) { lista.innerHTML='<div class="empty-state error">'+err.message+'</div>'; }
+}
+
+async function toggleActivoEmpleado(id, estaActivo) {
+  const emp = state.empleados.find(e => e.ID_Empleado === id); if (!emp) return;
+  const nuevoEstado = !estaActivo;
+  if (!confirm((nuevoEstado ? '¿Activar' : '¿Desactivar') + ' a ' + emp.Nombre_Completo + '?')) return;
+  try {
+    await api('guardarEmpleado', {
+      id, nombre: emp.Nombre_Completo, numero: emp.Numero_Empleado,
+      email: emp.Email, telegramId: emp.Telegram_ID, rol: emp.Rol,
+      notificaciones: emp.Notificaciones, horasAnuales: emp.Horas_Anuales,
+      jornadaBase: emp.Jornada_Base_Dia, objetivoDia: emp.Objetivo_Dia,
+      alarmaDescanso: emp.Alarma_Descanso, confirmarFichaje: emp.Confirmar_Fichaje,
+      Q1: emp.Q1, Q2: emp.Q2, Q3: emp.Q3, Q4: emp.Q4, activo: nuevoEstado.toString()
+    });
+    toast((nuevoEstado ? '✅ Empleado activado' : '⏸ Empleado desactivado'), 'ok');
+    await cargarEmpleados();
+  } catch(err) { toast('❌ ' + err.message, 'error'); }
+}
+
+function verFichajesEmpleado(id, nombre) {
+  state._adminVerEmp = { id, nombre };
+  mostrarPantalla('mis-fichajes');
+  // Mostrar selector de empleado en el header
+  const header = document.querySelector('#screen-mis-fichajes h2');
+  if (header) header.textContent = 'Fichajes — ' + nombre;
 }
 
 function abrirFormEmpleado(emp) {
@@ -640,8 +689,10 @@ function editarEmpleado(id) {
 
 async function guardarEmpleadoForm() {
   try {
+    const empId = document.getElementById('emp-id').value;
+    const empActual = state.empleados.find(e => e.ID_Empleado === empId);
     await api('guardarEmpleado', {
-      id:               document.getElementById('emp-id').value,
+      id:               empId,
       nombre:           document.getElementById('emp-nombre').value,
       numero:           document.getElementById('emp-numero').value,
       email:            document.getElementById('emp-email').value,
@@ -657,6 +708,7 @@ async function guardarEmpleadoForm() {
       Q2:               document.getElementById('emp-q2').value,
       Q3:               document.getElementById('emp-q3').value,
       Q4:               document.getElementById('emp-q4').value,
+      activo:           empActual ? empActual.Activo : 'true',
     });
     toast('✅ Empleado guardado','ok');
     document.getElementById('modal-empleado')?.classList.add('hidden');
@@ -686,14 +738,36 @@ async function cargarIncidencias() {
   try {
     const data = await api('getIncidencias');
     if (!data.length) { lista.innerHTML='<div class="empty-state">Sin incidencias</div>'; return; }
-    lista.innerHTML = data.map(inc => `
-      <div class="admin-card">
-        <div class="admin-card-info"><span>⚠️</span>
-          <div><div class="admin-card-name">${inc.Tipo_Incidencia} — ${inc.Fecha}</div><div class="admin-card-sub">${inc.Descripcion}</div></div>
+    // Pendientes primero, luego resueltas
+    const sorted = [...data].sort((a,b) => {
+      if (a.Estado === b.Estado) return (b.Fecha||'').localeCompare(a.Fecha||'');
+      return a.Estado === 'PENDIENTE' ? -1 : 1;
+    });
+    lista.innerHTML = sorted.map(inc => {
+      const resuelta = inc.Estado?.toUpperCase() === 'RESUELTA';
+      return `<div class="admin-card ${resuelta?'inc-resuelta':''}">
+        <div class="admin-card-info">
+          <span style="font-size:18px">${resuelta?'✅':'⚠️'}</span>
+          <div>
+            <div class="admin-card-name">${inc.Empleado_Nombre||''} — ${inc.Fecha}</div>
+            <div class="admin-card-sub">${inc.Descripcion}</div>
+            ${resuelta?'<div class="admin-card-sub">Resuelta por: '+inc.Resuelta_Por+'</div>':''}
+          </div>
         </div>
-        <span class="badge ${inc.Estado==='resuelta'?'ok':'warn'}">${inc.Estado}</span>
-      </div>`).join('');
+        ${!resuelta?`<button class="btn btn-sm btn-primary" onclick="resolverIncidencia('${inc.ID}')">Resolver</button>`
+          :'<span class="badge ok">Resuelta</span>'}
+      </div>`;
+    }).join('');
   } catch(err) { lista.innerHTML='<div class="empty-state error">'+err.message+'</div>'; }
+}
+
+async function resolverIncidencia(id) {
+  if (!confirm('¿Marcar esta incidencia como resuelta?')) return;
+  try {
+    await api('resolverIncidencia', { id });
+    toast('✅ Incidencia resuelta', 'ok');
+    await cargarIncidencias();
+  } catch(err) { toast('❌ ' + err.message, 'error'); }
 }
 
 // ── UTILIDADES ────────────────────────────────────────────────────
