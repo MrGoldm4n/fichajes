@@ -319,73 +319,127 @@ function actualizarAnillo() {
   const emp = state.empleado;
   if (!emp) return;
 
-  // FIX: parseFloat(x)||n en vez de parseFloat(x||'n') — evita NaN si x es " " (truthy no-numérico)
   const jornadaBase = parseFloat(emp.Jornada_Base_Dia) > 0 ? parseFloat(emp.Jornada_Base_Dia) : 6.5;
   const objetivo    = parseFloat(emp.Objetivo_Dia)     > 0 ? parseFloat(emp.Objetivo_Dia)     : 7.5;
   const minsBase    = jornadaBase * 60;
-  const minsObj     = objetivo * 60;
 
-  const fichajes = (s && s.fichajesHoy) ? s.fichajesHoy : [];
-  const minsReal = calcularMinsAcumulados(fichajes);
-  const enCurso  = s && s.proximoTipo === 'SALIDA';
+  const fichajes     = (s && s.fichajesHoy) ? s.fichajesHoy : [];
+  const minsReal     = calcularMinsAcumulados(fichajes);
+  const minsDescanso = calcularMinsDescanso(fichajes);
+  const enCurso      = s && s.proximoTipo === 'SALIDA';
 
   // Contador en vivo
   const valorEl  = document.getElementById('trabajado-valor');
   const estadoEl = document.getElementById('trabajado-estado');
-  if (valorEl) valorEl.textContent = minsReal > 0 ? formatMins(minsReal) : '—';
+  if (valorEl)  valorEl.textContent  = minsReal > 0 ? formatMins(minsReal) : '—';
   if (estadoEl) estadoEl.textContent = enCurso ? '▶' : (minsReal > 0 ? '⏸' : '');
 
   const wrap = document.querySelector('.ring-wrap');
   if (wrap) { enCurso ? wrap.classList.add('fichado') : wrap.classList.remove('fichado'); }
 
-  // El anillo representa max(objetivo, real) para que nunca se desborde
-  const minsMax = Math.max(isNaN(minsObj) ? 1 : minsObj, isNaN(minsReal) ? 0 : minsReal, 1);
+  // Total del anillo = trabajo + descanso (mínimo = objetivo)
+  const minsTotal = Math.max(objetivo * 60, minsReal + minsDescanso, 1);
 
-  // Proporciones de cada tramo (0..1)
-  const p0     = 0;
-  const pBase  = Math.min(minsReal, minsBase) / minsMax;
-  const pVerde = Math.min(minsReal, minsObj)  / minsMax;
-  const pTotal = minsReal / minsMax;
+  // Construir y dibujar segmentos cronológicos
+  const segs = construirSegmentos(fichajes, minsBase, minsTotal, enCurso);
+  dibujarSegmentos(segs);
 
-  // Descanso: tiempo entre SALIDA→ENTRADA
-  const minsDescanso   = calcularMinsDescanso(fichajes);
-  const minsMax2       = Math.max(minsObj, minsReal + minsDescanso, 1);
-  const pDescansoStart = minsReal / minsMax2;
-  const pDescansoEnd   = (minsReal + minsDescanso) / minsMax2;
-
-  // Recalcular proporciones con minsMax2 para que el anillo incluya descanso
-  const minsMaxFinal = minsMax2;
-  const p0f     = 0;
-  const pBaseF  = Math.min(minsReal, minsBase)  / minsMaxFinal;
-  const pVerdeF = Math.min(minsReal, minsObj)   / minsMaxFinal;
-  const pTotalF = minsReal / minsMaxFinal;
-  const pDescS  = pTotalF;
-  const pDescE  = (minsReal + minsDescanso) / minsMaxFinal;
-
-  dibujarArco('ring-base',     p0f,    pBaseF);
-  dibujarArco('ring-bolsa',    pBaseF, pVerdeF);
-  dibujarArco('ring-extra',    pVerdeF, pTotalF);
-  dibujarArco('ring-descanso', pDescS,  pDescE);
-
-  // Leyenda dinámica con valores reales
   actualizarLeyenda(jornadaBase, objetivo, minsReal, minsDescanso);
 }
 
+// Construye segmentos cronológicos {p1, p2, color}
+function construirSegmentos(fichajes, minsBase, minsTotal, enCurso) {
+  if (!Array.isArray(fichajes) || !fichajes.length) return [];
+  const norm = fichajes.map(f => ({
+    Tipo: (f.Tipo || f.tipo || '').toUpperCase(),
+    Hora: (f.Hora || f.hora || '').slice(0, 5)
+  })).filter(f => f.Hora).sort((a, b) => a.Hora.localeCompare(b.Hora));
+
+  const segs = [];
+  let cursor = 0;      // posición actual en el anillo (minutos)
+  let trabajado = 0;   // minutos de trabajo acumulados
+
+  for (let i = 0; i < norm.length; i++) {
+    const cur  = norm[i];
+    const next = norm[i + 1];
+
+    if (cur.Tipo === 'ENTRADA') {
+      // Fin de este tramo de trabajo
+      const horaFin = next && next.Tipo === 'SALIDA' ? next.Hora
+                    : (enCurso ? horaActual() : null);
+      if (!horaFin) continue;
+      const dur = Math.max(0, toMins(horaFin) - toMins(cur.Hora));
+      if (dur <= 0) continue;
+
+      // Dividir en azul/verde si cruza la frontera de jornada base
+      const quedaBase = Math.max(0, minsBase - trabajado);
+      const durBase   = Math.min(dur, quedaBase);
+      const durBolsa  = dur - durBase;
+
+      if (durBase > 0) {
+        segs.push({ p1: cursor / minsTotal, p2: (cursor + durBase) / minsTotal, color: 'base' });
+        cursor += durBase;
+      }
+      if (durBolsa > 0) {
+        segs.push({ p1: cursor / minsTotal, p2: (cursor + durBolsa) / minsTotal, color: 'bolsa' });
+        cursor += durBolsa;
+      }
+      trabajado += dur;
+
+    } else if (cur.Tipo === 'SALIDA' && next && next.Tipo === 'ENTRADA') {
+      // Tramo de descanso (naranja)
+      const durDesc = Math.max(0, toMins(next.Hora) - toMins(cur.Hora));
+      if (durDesc > 0) {
+        segs.push({ p1: cursor / minsTotal, p2: (cursor + durDesc) / minsTotal, color: 'descanso' });
+        cursor += durDesc;
+      }
+    }
+  }
+  return segs;
+}
+
+// Dibuja los segmentos en el SVG (crea/elimina paths dinámicamente)
+function dibujarSegmentos(segs) {
+  const svg = document.querySelector('.progress-ring'); if (!svg) return;
+  // Limpiar segmentos anteriores
+  svg.querySelectorAll('.ring-seg').forEach(el => el.remove());
+  // Colores por tipo
+  const colores = { base: '#4f8ef7', bolsa: '#2ecc71', descanso: '#f39c12' };
+  segs.forEach(seg => {
+    const p1 = Math.max(0, seg.p1);
+    const p2 = Math.min(0.9999, seg.p2);
+    if (p2 - p1 < 0.001) return;
+    const cx=110, cy=110, r=96;
+    const t1=-Math.PI/2+p1*2*Math.PI, t2=-Math.PI/2+p2*2*Math.PI;
+    const x1=cx+r*Math.cos(t1), y1=cy+r*Math.sin(t1);
+    const x2=cx+r*Math.cos(t2), y2=cy+r*Math.sin(t2);
+    const large=(p2-p1)>0.5?1:0;
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.classList.add('ring-seg');
+    path.setAttribute('fill','none');
+    path.setAttribute('stroke', colores[seg.color] || '#4f8ef7');
+    path.setAttribute('stroke-width','8');
+    path.setAttribute('stroke-linecap','round');
+    path.setAttribute('d','M '+x1.toFixed(3)+' '+y1.toFixed(3)+
+      ' A '+r+' '+r+' 0 '+large+' 1 '+x2.toFixed(3)+' '+y2.toFixed(3));
+    svg.appendChild(path);
+  });
+}
+
+
 function actualizarLeyenda(jornadaBase, objetivo, minsReal, minsDescanso) {
   const el = document.getElementById('ring-leyenda'); if (!el) return;
-  const minsBase  = jornadaBase * 60;
-  const minsObj   = objetivo * 60;
+  const minsBase = jornadaBase * 60;
 
+  // Todo lo que pasa de jornada base es bolsa (sin distinción de exceso)
   const minsTramoBase  = Math.min(minsReal, minsBase);
-  const minsTramoVerde = minsReal > minsBase ? Math.min(minsReal - minsBase, minsObj - minsBase) : 0;
-  const minsTramoExtra = minsReal > minsObj  ? minsReal - minsObj : 0;
+  const minsTramoVerde = Math.max(0, minsReal - minsBase);
 
   const items = [
     { clase: 'base',  texto: 'Jornada ' + (minsTramoBase > 0 ? formatMins(minsTramoBase) : jornadaBase + 'h obj.') },
     { clase: 'bolsa', texto: 'Bolsa '   + (minsTramoVerde > 0 ? formatMins(minsTramoVerde) : '+' + (objetivo - jornadaBase) + 'h obj.') },
   ];
-  if (minsTramoExtra > 0)  items.push({ clase: 'extra',    texto: 'Exceso ' + formatMins(minsTramoExtra) });
-  if (minsDescanso   > 0)  items.push({ clase: 'descanso', texto: 'Descanso ' + formatMins(minsDescanso) });
+  if (minsDescanso > 0) items.push({ clase: 'descanso', texto: 'Descanso ' + formatMins(minsDescanso) });
 
   el.innerHTML = items.map(i =>
     '<div class="ring-leyenda-item ' + i.clase + '">' +
@@ -768,11 +822,68 @@ async function cargarUbicaciones() {
     state.ubicaciones = await api('getUbicaciones');
     lista.innerHTML = state.ubicaciones.map(u => `
       <div class="admin-card">
-        <div class="admin-card-info"><span>📍</span>
-          <div><div class="admin-card-name">${u.Nombre}</div><div class="admin-card-sub">${u.Descripcion||''}</div></div>
+        <div class="admin-card-info">
+          <span style="font-size:18px">📍</span>
+          <div>
+            <div class="admin-card-name">${u.Nombre}</div>
+            <div class="admin-card-sub">${u.Descripcion||''}</div>
+            <div class="admin-card-sub" style="font-size:10px;opacity:.6">NFC: ${u.NFC_Param||u.ID_Ubicacion}</div>
+          </div>
         </div>
+        <button class="btn btn-sm btn-ghost" onclick="editarUbicacion('${u.ID_Ubicacion}')">✏️</button>
       </div>`).join('') || '<div class="empty-state">Sin ubicaciones</div>';
+    const btnNueva = document.getElementById('btn-nueva-ubicacion');
+    if (btnNueva) btnNueva.onclick = () => abrirFormUbicacion(null);
   } catch(err) { lista.innerHTML='<div class="empty-state error">'+err.message+'</div>'; }
+}
+
+function abrirFormUbicacion(ubi) {
+  // Reutilizar modal genérico o crear uno inline
+  const nombre     = ubi ? ubi.Nombre      : '';
+  const descripcion= ubi ? ubi.Descripcion : '';
+  const nfcParam   = ubi ? ubi.NFC_Param   : '';
+  const id         = ubi ? ubi.ID_Ubicacion: '';
+
+  const html = `<div class="modal-overlay" id="modal-ubicacion" style="display:flex">
+    <div class="modal-card">
+      <h3>${ubi ? 'Editar Ubicación' : 'Nueva Ubicación'}</h3>
+      <label class="field-label mt">Nombre</label>
+      <input type="text" id="ubi-nombre" class="select-field" value="${nombre}" placeholder="Oficina Central"/>
+      <label class="field-label mt">Descripción</label>
+      <input type="text" id="ubi-descripcion" class="select-field" value="${descripcion}" placeholder="Descripción opcional"/>
+      <label class="field-label mt">Parámetro NFC (se genera automático si se deja vacío)</label>
+      <input type="text" id="ubi-nfc" class="select-field" value="${nfcParam}" placeholder="ej: UBI-OFICINA"/>
+      <input type="hidden" id="ubi-id" value="${id}"/>
+      <div class="modal-btns mt">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-ubicacion').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarUbicacionForm()">Guardar</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function editarUbicacion(id) {
+  const ubi = state.ubicaciones.find(u => u.ID_Ubicacion === id);
+  if (ubi) abrirFormUbicacion(ubi);
+}
+
+async function guardarUbicacionForm() {
+  const id     = document.getElementById('ubi-id')?.value;
+  const nombre = document.getElementById('ubi-nombre')?.value?.trim();
+  if (!nombre) { toast('El nombre es obligatorio', 'error'); return; }
+  try {
+    await api('guardarUbicacion', {
+      id:          id || '',
+      nombre:      nombre,
+      descripcion: document.getElementById('ubi-descripcion')?.value?.trim() || '',
+      nfcParam:    document.getElementById('ubi-nfc')?.value?.trim() || '',
+      activo:      'true'
+    });
+    toast('✅ Ubicación guardada', 'ok');
+    document.getElementById('modal-ubicacion')?.remove();
+    await cargarUbicaciones();
+  } catch(err) { toast('❌ ' + err.message, 'error'); }
 }
 
 // ── INCIDENCIAS ───────────────────────────────────────────────────
