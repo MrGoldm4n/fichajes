@@ -381,3 +381,30 @@ html, body {
 .ring-leyenda-item.base   .ring-leyenda-dot { background: var(--accent); }
 .ring-leyenda-item.bolsa  .ring-leyenda-dot { background: var(--green); }
 .ring-leyenda-item.extra  .ring-leyenda-dot { background: var(--orange); }
+
+/* ── ADMIN EMPLEADOS MEJORADO ────────────────────────────────────── */
+.emp-inactivo { opacity: 0.55; }
+.avatar-inactivo { background: var(--border); }
+
+.emp-acciones {
+  display: flex; gap: 6px; flex-shrink: 0; align-items: center;
+}
+
+.badge-rol {
+  display: inline-block; font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 99px; margin-left: 6px;
+  background: rgba(79,142,247,.15); color: var(--accent);
+  vertical-align: middle; text-transform: capitalize;
+}
+.badge-rol.admin {
+  background: rgba(243,156,18,.15); color: var(--orange);
+}
+.badge-inactivo {
+  display: inline-block; font-size: 10px; font-weight: 700;
+  padding: 1px 6px; border-radius: 99px; margin-left: 4px;
+  background: rgba(231,76,60,.12); color: var(--red);
+  vertical-align: middle;
+}
+
+/* ── INCIDENCIAS ─────────────────────────────────────────────────── */
+.inc-resuelta { opacity: 0.6; }
