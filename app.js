@@ -310,6 +310,7 @@ function actualizarContador() {
   const valorEl  = document.getElementById('trabajado-valor');
   const estadoEl = document.getElementById('trabajado-estado');
   if (valorEl) valorEl.textContent = minsReal > 0 ? formatMins(minsReal) : '—';
+  // ▶ si está fichado dentro, ⏸ si está fuera (descanso o fin)
   if (estadoEl) estadoEl.textContent = enCurso ? '▶' : (minsReal > 0 ? '⏸' : '');
 }
 
@@ -346,23 +347,46 @@ function actualizarAnillo() {
   const pVerde = Math.min(minsReal, minsObj)  / minsMax;
   const pTotal = minsReal / minsMax;
 
-  dibujarArco('ring-base',  p0,     pBase);
-  dibujarArco('ring-bolsa', pBase,  pVerde);
-  dibujarArco('ring-extra', pVerde, pTotal);
+  // Descanso: tiempo entre SALIDA→ENTRADA
+  const minsDescanso   = calcularMinsDescanso(fichajes);
+  const minsMax2       = Math.max(minsObj, minsReal + minsDescanso, 1);
+  const pDescansoStart = minsReal / minsMax2;
+  const pDescansoEnd   = (minsReal + minsDescanso) / minsMax2;
 
-  // Leyenda dinámica
-  actualizarLeyenda(jornadaBase, objetivo, minsReal);
+  // Recalcular proporciones con minsMax2 para que el anillo incluya descanso
+  const minsMaxFinal = minsMax2;
+  const p0f     = 0;
+  const pBaseF  = Math.min(minsReal, minsBase)  / minsMaxFinal;
+  const pVerdeF = Math.min(minsReal, minsObj)   / minsMaxFinal;
+  const pTotalF = minsReal / minsMaxFinal;
+  const pDescS  = pTotalF;
+  const pDescE  = (minsReal + minsDescanso) / minsMaxFinal;
+
+  dibujarArco('ring-base',     p0f,    pBaseF);
+  dibujarArco('ring-bolsa',    pBaseF, pVerdeF);
+  dibujarArco('ring-extra',    pVerdeF, pTotalF);
+  dibujarArco('ring-descanso', pDescS,  pDescE);
+
+  // Leyenda dinámica con valores reales
+  actualizarLeyenda(jornadaBase, objetivo, minsReal, minsDescanso);
 }
 
-function actualizarLeyenda(jornadaBase, objetivo, minsReal) {
+function actualizarLeyenda(jornadaBase, objetivo, minsReal, minsDescanso) {
   const el = document.getElementById('ring-leyenda'); if (!el) return;
-  const bolsa = objetivo - jornadaBase;
-  const exceso = Math.max(0, minsReal - objetivo * 60);
+  const minsBase  = jornadaBase * 60;
+  const minsObj   = objetivo * 60;
+
+  const minsTramoBase  = Math.min(minsReal, minsBase);
+  const minsTramoVerde = minsReal > minsBase ? Math.min(minsReal - minsBase, minsObj - minsBase) : 0;
+  const minsTramoExtra = minsReal > minsObj  ? minsReal - minsObj : 0;
+
   const items = [
-    { clase: 'base',  texto: 'Jornada ' + jornadaBase + 'h' },
-    { clase: 'bolsa', texto: 'Bolsa +' + bolsa + 'h' },
+    { clase: 'base',  texto: 'Jornada ' + (minsTramoBase > 0 ? formatMins(minsTramoBase) : jornadaBase + 'h obj.') },
+    { clase: 'bolsa', texto: 'Bolsa '   + (minsTramoVerde > 0 ? formatMins(minsTramoVerde) : '+' + (objetivo - jornadaBase) + 'h obj.') },
   ];
-  if (exceso > 0) items.push({ clase: 'extra', texto: 'Exceso bolsa ' + formatMins(exceso) });
+  if (minsTramoExtra > 0)  items.push({ clase: 'extra',    texto: 'Exceso ' + formatMins(minsTramoExtra) });
+  if (minsDescanso   > 0)  items.push({ clase: 'descanso', texto: 'Descanso ' + formatMins(minsDescanso) });
+
   el.innerHTML = items.map(i =>
     '<div class="ring-leyenda-item ' + i.clase + '">' +
     '<span class="ring-leyenda-dot"></span>' +
@@ -387,6 +411,24 @@ function dibujarArco(id, p1, p2) {
   const large = (p2c - p1) > 0.5 ? 1 : 0;
   el.setAttribute('d', 'M ' + x1.toFixed(3) + ' ' + y1.toFixed(3) +
     ' A ' + r + ' ' + r + ' 0 ' + large + ' 1 ' + x2.toFixed(3) + ' ' + y2.toFixed(3));
+}
+
+function calcularMinsDescanso(fichajes) {
+  // Suma tiempo entre cada par SALIDA→ENTRADA consecutivo
+  if (!Array.isArray(fichajes) || fichajes.length < 2) return 0;
+  const norm = fichajes.map(f => ({
+    Tipo: (f.Tipo || f.tipo || '').toUpperCase(),
+    Hora: (f.Hora || f.hora || '').slice(0, 5)
+  }));
+  const ord = [...norm].sort((a,b) => (a.Hora||'').localeCompare(b.Hora||''));
+  let mins = 0;
+  for (let i = 0; i < ord.length - 1; i++) {
+    if (ord[i].Tipo === 'SALIDA' && ord[i+1].Tipo === 'ENTRADA') {
+      const d = toMins(ord[i+1].Hora) - toMins(ord[i].Hora);
+      if (d > 0) mins += d;
+    }
+  }
+  return mins;
 }
 
 function calcularMinsAcumulados(fichajes) {
