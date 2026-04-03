@@ -652,9 +652,11 @@ async function toggleActivoEmpleado(id, estaActivo) {
 }
 
 function verFichajesEmpleado(id, nombre) {
-  state._adminVerEmp = { id, nombre };
+  // Buscar Numero_Empleado (el que usa el backend para filtrar)
+  const emp = state.empleados.find(e => e.ID_Empleado === id);
+  const numEmp = emp?.Numero_Empleado || id;
+  state._adminVerEmp = { id: numEmp, nombre };
   mostrarPantalla('mis-fichajes');
-  // Mostrar selector de empleado en el header
   const header = document.querySelector('#screen-mis-fichajes h2');
   if (header) header.textContent = 'Fichajes — ' + nombre;
 }
