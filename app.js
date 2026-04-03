@@ -736,7 +736,7 @@ async function toggleActivoEmpleado(id, estaActivo) {
   try {
     await api('guardarEmpleado', {
       id, nombre: emp.Nombre_Completo, numero: emp.Numero_Empleado,
-      email: emp.Email, telegramId: emp.Telegram_ID, rol: emp.Rol,
+      email: emp.Email, empTelegramId: emp.Telegram_ID, rol: emp.Rol,
       notificaciones: emp.Notificaciones, horasAnuales: emp.Horas_Anuales,
       jornadaBase: emp.Jornada_Base_Dia, objetivoDia: emp.Objetivo_Dia,
       alarmaDescanso: emp.Alarma_Descanso, confirmarFichaje: emp.Confirmar_Fichaje,
@@ -794,7 +794,7 @@ async function guardarEmpleadoForm() {
       nombre:           document.getElementById('emp-nombre').value,
       numero:           document.getElementById('emp-numero').value,
       email:            document.getElementById('emp-email').value,
-      telegramId:       document.getElementById('emp-tgid').value,
+      empTelegramId:    document.getElementById('emp-tgid').value,
       rol:              document.getElementById('emp-rol').value,
       notificaciones:   document.getElementById('emp-notif').value,
       horasAnuales:     document.getElementById('emp-horas').value,
