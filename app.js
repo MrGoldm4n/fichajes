@@ -820,7 +820,8 @@ async function cargarUbicaciones() {
   lista.innerHTML = '<div class="empty-state">Cargando…</div>';
   try {
     state.ubicaciones = await api('getUbicaciones');
-    const baseUrl = 'https://mrgoldm4n.github.io/fichajes/?loc=';
+    // URL de Telegram para NFC — abre el bot y ficha directamente sin abrir la web
+    const baseUrl = 'https://t.me/Controlpresencia_bot?start=';
     lista.innerHTML = state.ubicaciones.map(u => {
       const nfc = u.NFC_Param || u.ID_Ubicacion;
       const url = baseUrl + encodeURIComponent(nfc);
