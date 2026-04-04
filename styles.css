@@ -385,7 +385,7 @@ html, body {
 .ring-leyenda-item.base     .ring-leyenda-dot { background: var(--accent); }
 .ring-leyenda-item.bolsa    .ring-leyenda-dot { background: var(--green); }
 .ring-leyenda-item.extra    .ring-leyenda-dot { background: var(--orange); }
-.ring-leyenda-item.descanso .ring-leyenda-dot { background: var(--border); }
+.ring-leyenda-item.descanso .ring-leyenda-dot { background: #f39c12; }
 
 /* ── ADMIN EMPLEADOS MEJORADO ────────────────────────────────────── */
 .emp-inactivo { opacity: 0.55; }
