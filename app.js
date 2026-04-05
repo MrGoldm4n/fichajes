@@ -640,9 +640,33 @@ async function cargarMisFichajes() {
   const hoy = new Date();
   if (!input.value) input.value = hoy.getFullYear()+'-'+String(hoy.getMonth()+1).padStart(2,'0');
   input.onchange = () => cargarMisFichajes();
+
+  // Selector de empleado para admin
+  const esAdmin = state.empleado?.Rol?.toLowerCase() === 'admin';
+  const selWrap = document.getElementById('fichajes-emp-wrap');
+  if (esAdmin && selWrap) {
+    selWrap.classList.remove('hidden');
+    if (!document.getElementById('fichajes-emp-sel').options.length) {
+      // Cargar lista de empleados si no está
+      if (!state.empleados?.length) {
+        try { state.empleados = await api('getEmpleados'); } catch(e) {}
+      }
+      const sel = document.getElementById('fichajes-emp-sel');
+      sel.innerHTML = '<option value="">— Mis fichajes —</option>' +
+        (state.empleados || []).map(e =>
+          `<option value="${e.Numero_Empleado}">${e.Nombre_Completo}</option>`
+        ).join('');
+      sel.onchange = () => {
+        state._adminVerEmp = sel.value ? { id: sel.value, nombre: sel.options[sel.selectedIndex].text } : null;
+        const h = document.querySelector('#screen-mis-fichajes h2');
+        if (h) h.textContent = sel.value ? 'Fichajes — ' + sel.options[sel.selectedIndex].text : 'Mis Fichajes';
+        cargarMisFichajes();
+      };
+    }
+  }
+
   const lista = document.getElementById('lista-fichajes'); if (!lista) return;
   lista.innerHTML = '<div class="empty-state">Cargando…</div>';
-  // Admin viendo fichajes de otro empleado
   const params = { mes: input.value };
   if (state._adminVerEmp) params.numEmp = state._adminVerEmp.id;
   try {
@@ -674,7 +698,27 @@ async function cargarDashboard() {
   try {
     const año = new Date().getFullYear();
     const dashAño = document.getElementById('dash-año'); if (dashAño) dashAño.textContent = año;
-    const resumen = await api('getResumen', { año });
+
+    // Selector de empleado para admin
+    const esAdmin = state.empleado?.Rol?.toLowerCase() === 'admin';
+    const dashSelWrap = document.getElementById('dash-emp-wrap');
+    if (esAdmin && dashSelWrap) {
+      dashSelWrap.classList.remove('hidden');
+      const sel = document.getElementById('dash-emp-select');
+      if (sel && !sel.options.length) {
+        if (!state.empleados?.length) {
+          try { state.empleados = await api('getEmpleados'); } catch(e) {}
+        }
+        sel.innerHTML = '<option value="">— Mi dashboard —</option>' +
+          (state.empleados || []).map(e =>
+            `<option value="${e.Numero_Empleado}">${e.Nombre_Completo}</option>`
+          ).join('');
+        sel.onchange = () => cargarDashboard();
+      }
+    }
+    const numEmpSel = esAdmin && document.getElementById('dash-emp-select')?.value || '';
+    const params = numEmpSel ? { año, numEmp: numEmpSel } : { año };
+    const resumen = await api('getResumen', params);
     const obj  = parseFloat(state.empleado?.Horas_Anuales || 1770);
     const real = resumen.horasRealizadas || 0;
     const pct  = Math.min(100, Math.round((real / obj) * 100));
@@ -911,17 +955,17 @@ function abrirFormEmpleado(emp) {
   document.getElementById('emp-numero').value      = emp?.Numero_Empleado   || '';
   document.getElementById('emp-email').value       = emp?.Email             || '';
   document.getElementById('emp-tgid').value        = emp?.Telegram_ID       || '';
-  document.getElementById('emp-rol').value         = emp?.Rol               || 'empleado';
-  document.getElementById('emp-notif').value       = emp?.Notificaciones    || 'privado';
+  document.getElementById('emp-rol').value         = emp?.Rol?.toLowerCase() || 'empleado';
+  document.getElementById('emp-notif').value       = emp?.Notificaciones?.toLowerCase() || 'privado';
   document.getElementById('emp-horas').value       = emp?.Horas_Anuales     || '1770';
-  document.getElementById('emp-jornada-base').value= emp?.Jornada_Base_Dia  || '6.5';
-  document.getElementById('emp-objetivo-dia').value= emp?.Objetivo_Dia      || '7.5';
+  // FIX: usar valor real aunque sea 0, solo usar default si está completamente vacío
+  document.getElementById('emp-jornada-base').value= (emp?.Jornada_Base_Dia && emp.Jornada_Base_Dia !== '') ? emp.Jornada_Base_Dia : '6.5';
   document.getElementById('emp-alarma').value      = emp?.Alarma_Descanso   || '25';
   document.getElementById('emp-q1').value          = emp?.Q1                || '';
   document.getElementById('emp-q2').value          = emp?.Q2                || '';
   document.getElementById('emp-q3').value          = emp?.Q3                || '';
   document.getElementById('emp-q4').value          = emp?.Q4                || '';
-  document.getElementById('emp-confirmar').value   = emp?.Confirmar_Fichaje || 'true';
+  document.getElementById('emp-confirmar').value   = emp?.Confirmar_Fichaje?.toLowerCase() === 'false' ? 'false' : 'true';
   document.getElementById('modal-empleado')?.classList.remove('hidden');
   document.getElementById('emp-cancel').onclick = () => document.getElementById('modal-empleado')?.classList.add('hidden');
   document.getElementById('emp-save').onclick   = guardarEmpleadoForm;
@@ -936,6 +980,7 @@ async function guardarEmpleadoForm() {
   try {
     const empId = document.getElementById('emp-id').value;
     const empActual = state.empleados.find(e => e.ID_Empleado === empId);
+    const jornadaVal = document.getElementById('emp-jornada-base').value?.trim();
     await api('guardarEmpleado', {
       id:               empId,
       nombre:           document.getElementById('emp-nombre').value,
@@ -945,8 +990,9 @@ async function guardarEmpleadoForm() {
       rol:              document.getElementById('emp-rol').value,
       notificaciones:   document.getElementById('emp-notif').value,
       horasAnuales:     document.getElementById('emp-horas').value,
-      jornadaBase:      document.getElementById('emp-jornada-base').value,
-      objetivoDia:      document.getElementById('emp-objetivo-dia').value,
+      // Mantener valor existente si el campo está vacío
+      jornadaBase:      jornadaVal || empActual?.Jornada_Base_Dia || '6.5',
+      objetivoDia:      empActual?.Objetivo_Dia || '7.5',
       alarmaDescanso:   document.getElementById('emp-alarma').value,
       confirmarFichaje: document.getElementById('emp-confirmar').value,
       Q1:               document.getElementById('emp-q1').value,
