@@ -102,6 +102,9 @@
   </div>
   <div class="filter-bar">
     <input type="month" id="filter-mes" class="select-field sm"/>
+    <div id="fichajes-emp-wrap" class="hidden">
+      <select id="fichajes-emp-sel" class="select-field sm"></select>
+    </div>
   </div>
   <div id="lista-fichajes" class="fichajes-lista">
     <div class="empty-state">Selecciona un mes</div>
@@ -113,7 +116,9 @@
   <div class="screen-header with-back">
     <button class="back-btn" data-back="fichar">‹</button>
     <h2>Dashboard</h2>
-    <select id="dash-emp-select" class="select-field xs admin-only hidden"></select>
+  </div>
+  <div id="dash-emp-wrap" class="hidden" style="padding:0 16px 8px">
+    <select id="dash-emp-select" class="select-field"></select>
   </div>
   <div class="dashboard-scroll">
     <div class="card">
@@ -245,8 +250,7 @@
     <input type="number" id="emp-horas" class="select-field" value="1770"/>
     <label class="field-label mt">Jornada base diaria (h)</label>
     <input type="number" id="emp-jornada-base" class="select-field" value="6.5" step="0.5" min="1" max="12"/>
-    <label class="field-label mt">Objetivo diario (h)</label>
-    <input type="number" id="emp-objetivo-dia" class="select-field" value="7.5" step="0.5" min="1" max="14"/>
+
     <label class="field-label mt">Alarma descanso (minutos)</label>
     <input type="number" id="emp-alarma" class="select-field" value="25" min="1" max="120"/>
     <div class="trimestres-inputs">
@@ -289,7 +293,7 @@
 <div id="sidebar-overlay" class="sidebar-overlay hidden"></div>
 <div id="toast" class="toast hidden"></div>
 
-<script>const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby9uZbc-Qa1hheEsG19qcijTlNhVfLeHrEl6qrUEn1RR87s4SBKKD4Lpnf41r6W1e7k/exec';</script>
+<script>const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyP-Y4u7bUJRJ8VgTLuM1uMsdq04tHtfeKIjvkwkG5iReCpVUHsZnRQUVtTaE3zM97D/exec';</script>
 <script src="app.js"></script>
 </body>
 </html>
