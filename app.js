@@ -814,7 +814,7 @@ function renderSemana(dias) {
     if (!mins) return '';
     const h = Math.floor(mins / 60);
     const m = mins % 60;
-    return h + 'h' + (m > 0 ? ' ' + m + ''' : '');
+    return h + 'h' + (m > 0 ? ' ' + m + "\'" : '');
   }
 
   cont.innerHTML = dias.map((d, i) => {
