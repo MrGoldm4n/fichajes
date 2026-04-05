@@ -38,6 +38,12 @@ body {
 /* Las modales y overlays usan posición fija — necesitan referencia al viewport */
 .hidden { display: none !important; }
 
+/* ── SCROLLBAR OSCURO ── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+
 /* ── SPLASH ── */
 .splash-inner {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -332,14 +338,29 @@ body {
 .cal-day-header { text-align: center; font-size: 10px; color: var(--text2); padding: 4px 0; }
 .cal-day {
   aspect-ratio: 1; border-radius: 6px; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; font-size: 11px; background: var(--bg3);
+  align-items: center; justify-content: center; gap: 2px;
+  background: var(--bg3); padding: 2px;
 }
-.cal-day.ok    { background: rgba(79,142,247,.15); color: var(--accent); }
-.cal-day.hoy   { background: var(--accent); color: #fff; font-weight: 700; }
 .cal-day.vacio { background: transparent; opacity: .3; }
-.cal-horas     { font-size: 9px; color: var(--text2); }
-.cal-day.ok  .cal-horas { color: var(--accent); }
-.cal-day.hoy .cal-horas { color: rgba(255,255,255,.8); }
+.cal-day.hoy   { background: var(--accent); color: #fff; font-weight: 700; }
+/* Número del día: más grande y prominente */
+.cal-num { font-size: 13px; font-weight: 700; line-height: 1; }
+.cal-day.hoy .cal-num { color: #fff; }
+.cal-day:not(.hoy) .cal-num { color: var(--text); }
+.cal-day.vacio .cal-num { color: var(--text2); }
+/* Dots de colores */
+.cal-dots { display: flex; gap: 2px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.cal-dot {
+  font-size: 8px; color: var(--text2);
+  display: flex; align-items: center; gap: 1px; line-height: 1;
+}
+.cal-dot-circle {
+  width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
+}
+.cal-dot.base     .cal-dot-circle { background: #4f8ef7; }
+.cal-dot.bolsa    .cal-dot-circle { background: #2ecc71; }
+.cal-dot.descanso .cal-dot-circle { background: #f39c12; }
+.cal-day.hoy .cal-dot { color: rgba(255,255,255,.8); }
 
 /* ── ADMIN ── */
 .lista-admin { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px 16px; -webkit-overflow-scrolling: touch; }
