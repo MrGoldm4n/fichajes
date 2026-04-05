@@ -281,7 +281,7 @@ body {
 
 /* ── MIS FICHAJES ── */
 .fichajes-lista { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; -webkit-overflow-scrolling: touch; }
-.dia-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.dia-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
 .dia-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; background: var(--bg3); border-bottom: 1px solid var(--border);
