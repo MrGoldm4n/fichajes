@@ -910,6 +910,7 @@ async function cargarEmpleados() {
         </div>
         <div class="emp-acciones">
           <button class="btn btn-sm btn-ghost" title="Ver fichajes" onclick="verFichajesEmpleado('${emp.ID_Empleado}','${emp.Nombre_Completo}')">📋</button>
+          <button class="btn btn-sm btn-ghost" title="Exportar fichajes" onclick="abrirExportar('${emp.ID_Empleado}','${emp.Nombre_Completo}','${emp.Numero_Empleado}')">📥</button>
           <button class="btn btn-sm btn-ghost" title="Editar" onclick="editarEmpleado('${emp.ID_Empleado}')">✏️</button>
           <button class="btn btn-sm ${activo?'btn-ghost':'btn-primary'}" title="${activo?'Desactivar':'Activar'}"
             onclick="toggleActivoEmpleado('${emp.ID_Empleado}',${activo})">${activo?'🔴':'🟢'}</button>
@@ -1155,6 +1156,159 @@ async function resolverIncidencia(id) {
     toast('✅ Incidencia resuelta', 'ok');
     await cargarIncidencias();
   } catch(err) { toast('❌ ' + err.message, 'error'); }
+}
+
+
+// ── EXPORTAR FICHAJES ─────────────────────────────────────────────
+function abrirExportar(id, nombre, numero) {
+  const hoy  = fechaHoy();
+  const hace1mes = (() => {
+    const d = new Date(); d.setMonth(d.getMonth() - 1);
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  })();
+
+  // Eliminar modal anterior si existe
+  document.getElementById('modal-exportar')?.remove();
+
+  const html = `<div class="modal-overlay" id="modal-exportar" style="display:flex">
+    <div class="modal-card">
+      <h3>📥 Exportar Fichajes</h3>
+      <div class="admin-card-sub" style="margin-bottom:12px">${nombre}</div>
+      <input type="hidden" id="exp-numEmp" value="${numero}"/>
+      <input type="hidden" id="exp-nombre" value="${nombre}"/>
+      <label class="field-label mt">Fecha inicio</label>
+      <input type="date" id="exp-inicio" class="select-field" value="${hace1mes}"/>
+      <label class="field-label mt">Fecha fin</label>
+      <input type="date" id="exp-fin" class="select-field" value="${hoy}"/>
+      <div class="modal-btns mt" style="flex-direction:column;gap:8px">
+        <button class="btn btn-primary" onclick="exportarExcel()">📊 Exportar Excel (CSV)</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-exportar').remove()">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function exportarExcel() {
+  const numEmp  = document.getElementById('exp-numEmp')?.value;
+  const nombre  = document.getElementById('exp-nombre')?.value;
+  const inicio  = document.getElementById('exp-inicio')?.value;
+  const fin     = document.getElementById('exp-fin')?.value;
+  if (!inicio || !fin) { toast('Indica el rango de fechas', 'error'); return; }
+
+  const btnExp = document.querySelector('#modal-exportar .btn-primary');
+  if (btnExp) { btnExp.disabled = true; btnExp.textContent = 'Generando…'; }
+
+  try {
+    const data = await api('getFichajes', { numEmp, fechaInicio: inicio, fechaFin: fin });
+    if (!data.length) { toast('Sin fichajes en ese rango', 'error'); return; }
+
+    // Agrupar por día para calcular totales
+    const porDia = {};
+    data.forEach(f => {
+      if (!porDia[f.Fecha]) porDia[f.Fecha] = [];
+      porDia[f.Fecha].push(f);
+    });
+
+    const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia) > 0
+      ? parseFloat(state.empleado.Jornada_Base_Dia) : 6.5;
+
+    // Construir CSV
+    const bom = '﻿'; // BOM para que Excel lo abra correctamente en UTF-8
+    const sep = ';';
+    let csv = bom;
+
+    // Cabecera del informe
+    csv += 'INFORME DE FICHAJES' + sep + sep + sep + sep + sep + '
+';
+    csv += 'Empleado' + sep + nombre + sep + sep + sep + sep + '
+';
+    csv += 'Periodo' + sep + inicio + ' a ' + fin + sep + sep + sep + sep + '
+';
+    csv += 'Generado' + sep + fechaHoy() + sep + sep + sep + sep + '
+';
+    csv += '
+';
+
+    // Cabeceras de datos
+    csv += ['Fecha','Hora','Tipo','Ubicación','Método','Comentario'].join(sep) + '
+';
+
+    // Datos por día con subtotales
+    let totalMinsGlobal = 0;
+    let totalBolsaGlobal = 0;
+    let diasTrabajados = 0;
+
+    Object.keys(porDia).sort().forEach(fecha => {
+      const fichajes = porDia[fecha];
+      fichajes.forEach(f => {
+        csv += [
+          f.Fecha, f.Hora, f.Tipo,
+          f.Ubicacion_Nombre || '',
+          f.Metodo || '',
+          (f.Comentario || '').replace(/;/g, ',')
+        ].join(sep) + '
+';
+      });
+
+      // Subtotal del día
+      const minsDia = calcularHorasDiaEnMins(fichajes);
+      if (minsDia > 0) {
+        diasTrabajados++;
+        totalMinsGlobal += minsDia;
+        const bolsa = Math.max(0, minsDia - jornadaBase * 60);
+        totalBolsaGlobal += bolsa;
+        csv += sep + sep + 'Total día' + sep + formatMins(minsDia) + sep + sep + '
+';
+      }
+      csv += '
+';
+    });
+
+    // Resumen final
+    csv += '
+';
+    csv += 'RESUMEN' + sep + sep + sep + sep + sep + '
+';
+    csv += 'Días trabajados' + sep + diasTrabajados + sep + sep + sep + sep + '
+';
+    csv += 'Horas jornada' + sep + formatMins(Math.min(totalMinsGlobal, jornadaBase * 60 * diasTrabajados)) + sep + sep + sep + sep + '
+';
+    csv += 'Horas bolsa' + sep + formatMins(totalBolsaGlobal) + sep + sep + sep + sep + '
+';
+    csv += 'Total trabajado' + sep + formatMins(totalMinsGlobal) + sep + sep + sep + sep + '
+';
+
+    // Descargar
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'Fichajes_' + nombre.replace(/\s+/g,'_') + '_' + inicio + '_' + fin + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast('✅ Fichajes exportados', 'ok');
+    document.getElementById('modal-exportar')?.remove();
+  } catch(err) {
+    toast('❌ ' + err.message, 'error');
+  } finally {
+    if (btnExp) { btnExp.disabled = false; btnExp.textContent = '📊 Exportar Excel (CSV)'; }
+  }
+}
+
+// Helper: calcular minutos de un día
+function calcularHorasDiaEnMins(fichajes) {
+  if (!Array.isArray(fichajes) || fichajes.length < 2) return 0;
+  const ord = [...fichajes].sort((a,b) => (a.Hora||'').localeCompare(b.Hora||''));
+  let mins = 0;
+  for (let i = 0; i < ord.length - 1; i += 2) {
+    if (ord[i].Tipo === 'ENTRADA' && ord[i+1]?.Tipo === 'SALIDA')
+      mins += toMins(ord[i+1].Hora) - toMins(ord[i].Hora);
+  }
+  return Math.max(0, mins);
 }
 
 // ── UTILIDADES ────────────────────────────────────────────────────
