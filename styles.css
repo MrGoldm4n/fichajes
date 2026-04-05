@@ -477,3 +477,18 @@ body {
   padding: 8px; background: var(--bg3); border-radius: var(--radius-sm);
 }
 .ubi-emp-nombre { font-size: 12px; font-weight: 600; color: var(--text); }
+
+/* ── DASHBOARD BOLSA GAUGE ───────────────────────────────────────── */
+.dash-bottom-row {
+  display: flex; gap: 12px; align-items: stretch;
+}
+.dash-bottom-row .flex1 { flex: 1; }
+.bolsa-gauge-card {
+  width: 200px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+@media (max-width: 480px) {
+  .dash-bottom-row { flex-direction: column; }
+  .bolsa-gauge-card { width: 100%; }
+}
