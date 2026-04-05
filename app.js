@@ -1203,38 +1203,23 @@ async function exportarExcel() {
     const data = await api('getFichajes', { numEmp, fechaInicio: inicio, fechaFin: fin });
     if (!data.length) { toast('Sin fichajes en ese rango', 'error'); return; }
 
-    // Agrupar por día para calcular totales
     const porDia = {};
-    data.forEach(f => {
-      if (!porDia[f.Fecha]) porDia[f.Fecha] = [];
-      porDia[f.Fecha].push(f);
-    });
+    data.forEach(f => { if (!porDia[f.Fecha]) porDia[f.Fecha]=[]; porDia[f.Fecha].push(f); });
 
     const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia) > 0
       ? parseFloat(state.empleado.Jornada_Base_Dia) : 6.5;
 
-    // Construir CSV
-    const bom = '﻿'; // BOM para que Excel lo abra correctamente en UTF-8
-    const sep = ';';
-    let csv = bom;
+    const S = ';';
+    const N = '\n';
+    let csv = '\uFEFF';
 
-    // Cabecera del informe
-    csv += 'INFORME DE FICHAJES' + sep + sep + sep + sep + sep + '
-';
-    csv += 'Empleado' + sep + nombre + sep + sep + sep + sep + '
-';
-    csv += 'Periodo' + sep + inicio + ' a ' + fin + sep + sep + sep + sep + '
-';
-    csv += 'Generado' + sep + fechaHoy() + sep + sep + sep + sep + '
-';
-    csv += '
-';
+    csv += 'INFORME DE FICHAJES' + S+S+S+S+S + N;
+    csv += 'Empleado' + S + nombre + S+S+S+S + N;
+    csv += 'Periodo' + S + inicio + ' a ' + fin + S+S+S+S + N;
+    csv += 'Generado' + S + fechaHoy() + S+S+S+S + N;
+    csv += N;
+    csv += 'Fecha' + S + 'Hora' + S + 'Tipo' + S + 'Ubicacion' + S + 'Metodo' + S + 'Comentario' + N;
 
-    // Cabeceras de datos
-    csv += ['Fecha','Hora','Tipo','Ubicación','Método','Comentario'].join(sep) + '
-';
-
-    // Datos por día con subtotales
     let totalMinsGlobal = 0;
     let totalBolsaGlobal = 0;
     let diasTrabajados = 0;
@@ -1242,60 +1227,42 @@ async function exportarExcel() {
     Object.keys(porDia).sort().forEach(fecha => {
       const fichajes = porDia[fecha];
       fichajes.forEach(f => {
-        csv += [
-          f.Fecha, f.Hora, f.Tipo,
-          f.Ubicacion_Nombre || '',
-          f.Metodo || '',
-          (f.Comentario || '').replace(/;/g, ',')
-        ].join(sep) + '
-';
+        csv += f.Fecha + S + f.Hora + S + f.Tipo + S +
+          (f.Ubicacion_Nombre||'') + S + (f.Metodo||'') + S +
+          (f.Comentario||'').replace(/;/g,',') + N;
       });
-
-      // Subtotal del día
       const minsDia = calcularHorasDiaEnMins(fichajes);
       if (minsDia > 0) {
         diasTrabajados++;
         totalMinsGlobal += minsDia;
         const bolsa = Math.max(0, minsDia - jornadaBase * 60);
         totalBolsaGlobal += bolsa;
-        csv += sep + sep + 'Total día' + sep + formatMins(minsDia) + sep + sep + '
-';
+        csv += S+S + 'Total dia' + S + formatMins(minsDia) + S+S + N;
       }
-      csv += '
-';
+      csv += N;
     });
 
-    // Resumen final
-    csv += '
-';
-    csv += 'RESUMEN' + sep + sep + sep + sep + sep + '
-';
-    csv += 'Días trabajados' + sep + diasTrabajados + sep + sep + sep + sep + '
-';
-    csv += 'Horas jornada' + sep + formatMins(Math.min(totalMinsGlobal, jornadaBase * 60 * diasTrabajados)) + sep + sep + sep + sep + '
-';
-    csv += 'Horas bolsa' + sep + formatMins(totalBolsaGlobal) + sep + sep + sep + sep + '
-';
-    csv += 'Total trabajado' + sep + formatMins(totalMinsGlobal) + sep + sep + sep + sep + '
-';
+    csv += N;
+    csv += 'RESUMEN' + S+S+S+S+S + N;
+    csv += 'Dias trabajados' + S + diasTrabajados + S+S+S+S + N;
+    csv += 'Total trabajado' + S + formatMins(totalMinsGlobal) + S+S+S+S + N;
+    csv += 'Horas bolsa' + S + formatMins(totalBolsaGlobal) + S+S+S+S + N;
 
-    // Descargar
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href     = url;
+    a.href = url;
     a.download = 'Fichajes_' + nombre.replace(/\s+/g,'_') + '_' + inicio + '_' + fin + '.csv';
-    document.body.appendChild(a);
-    a.click();
+    document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    toast('✅ Fichajes exportados', 'ok');
+    toast('\u2705 Fichajes exportados', 'ok');
     document.getElementById('modal-exportar')?.remove();
   } catch(err) {
-    toast('❌ ' + err.message, 'error');
+    toast('\u274C ' + err.message, 'error');
   } finally {
-    if (btnExp) { btnExp.disabled = false; btnExp.textContent = '📊 Exportar Excel (CSV)'; }
+    if (btnExp) { btnExp.disabled = false; btnExp.textContent = '\ud83d\udcca Exportar Excel (CSV)'; }
   }
 }
 
