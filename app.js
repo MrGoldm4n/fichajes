@@ -753,30 +753,56 @@ function renderCalendario(detalleDias, mesStr) {
   const hoy = new Date();
   const esHoy = (d) => d === hoy.getDate() && mes === hoy.getMonth()+1 && año === hoy.getFullYear();
 
-  // Mapa de horas por fecha
-  const horasPorDia = {};
-  detalleDias.forEach(d => { horasPorDia[d.fecha] = d.horas || 0; });
+  const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia || 6.5);
+  const minsBase = jornadaBase * 60;
 
-  // Primer día del mes (0=Dom, 1=Lun...)
+  // Mapa por fecha: { minutos, minsDescanso }
+  const datosPorDia = {};
+  detalleDias.forEach(d => {
+    datosPorDia[d.fecha] = {
+      mins:     Math.round((d.horas || 0) * 60),
+      descanso: d.minsDescanso || 0
+    };
+  });
+
   const primerDia = new Date(año, mes-1, 1).getDay();
   const primerLunes = primerDia === 0 ? 6 : primerDia - 1;
   const diasEnMes = new Date(año, mes, 0).getDate();
-  const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia || 6.5);
 
   const headers = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'].map(d =>
     `<div class="cal-day-header">${d}</div>`).join('');
 
-  const vacios = Array(primerLunes).fill('<div class="cal-day vacio"></div>').join('');
+  const vacios = Array(primerLunes).fill('<div class="cal-day vacio"><span class="cal-num"></span></div>').join('');
 
   const dias = Array.from({length: diasEnMes}, (_, i) => {
     const d = i + 1;
     const fechaStr = año + '-' + String(mes).padStart(2,'0') + '-' + String(d).padStart(2,'0');
-    const horas = horasPorDia[fechaStr] || 0;
+    const datos = datosPorDia[fechaStr];
+    const mins = datos?.mins || 0;
+    const descanso = datos?.descanso || 0;
+
     let clase = 'cal-day';
     if (esHoy(d)) clase += ' hoy';
-    else if (horas > 0) clase += ' ok';
-    const horasText = horas > 0 ? `<div class="cal-horas">${horas.toFixed(1)}h</div>` : '';
-    return `<div class="${clase}"><span>${d}</span>${horasText}</div>`;
+
+    let dots = '';
+    if (mins > 0) {
+      const minsJornada  = Math.min(mins, minsBase);
+      const minsBolsa    = Math.max(0, mins - minsBase);
+
+      dots = '<div class="cal-dots">';
+      // Punto azul: jornada base
+      dots += `<div class="cal-dot base"><div class="cal-dot-circle"></div>${formatMins(minsJornada)}</div>`;
+      // Punto verde: bolsa (solo si hay)
+      if (minsBolsa > 0) dots += `<div class="cal-dot bolsa"><div class="cal-dot-circle"></div>${formatMins(minsBolsa)}</div>`;
+      // Punto naranja: descanso (solo si hay)
+      if (descanso > 0) dots += `<div class="cal-dot descanso"><div class="cal-dot-circle"></div>${formatMins(descanso)}</div>`;
+      dots += '</div>';
+    }
+
+    return `<div class="${clase}">
+      <span class="cal-num">${d}</span>
+      ${dots}
+    </div>`;
   }).join('');
 
   grid.innerHTML = headers + vacios + dias;
