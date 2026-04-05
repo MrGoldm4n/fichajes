@@ -753,7 +753,8 @@ function renderCalendario(detalleDias, mesStr) {
   const hoy = new Date();
   const esHoy = (d) => d === hoy.getDate() && mes === hoy.getMonth()+1 && año === hoy.getFullYear();
 
-  const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia || 6.5);
+  const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia) > 0
+    ? parseFloat(state.empleado.Jornada_Base_Dia) : 6.5;
   const minsBase = jornadaBase * 60;
 
   // Mapa por fecha usando minutos directamente del backend
