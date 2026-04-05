@@ -178,6 +178,7 @@ function montarUI() {
   setupOnce();
   iniciarReloj();
   setupNavegacion();
+  iniciarPolling();
 
   if (emp.Rol?.toLowerCase() === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
   const btnAlarma = document.getElementById('btn-alarma');
@@ -1195,6 +1196,30 @@ function iniciarReloj() {
     if (d) d.textContent=now.toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});
   };
   tick(); clearInterval(window.__clockInt); window.__clockInt=setInterval(tick,1000);
+}
+
+// ── POLLING LIGERO ────────────────────────────────────────────────
+// Comprueba cada 30s si hay nuevos fichajes — solo recarga si hay cambios
+function iniciarPolling() {
+  clearInterval(window.__pollingInt);
+  window.__pollingInt = setInterval(async () => {
+    // Solo actuar si la pantalla de fichar está activa
+    const pantallaFichar = document.getElementById('screen-fichar');
+    if (!pantallaFichar?.classList.contains('active')) return;
+    // No hacer polling si la app está en segundo plano
+    if (document.hidden) return;
+    try {
+      const estado = await api('getEstado');
+      const totalAnterior = state.estadoHoy?.totalFichajesHoy ?? -1;
+      const totalNuevo    = estado?.totalFichajesHoy ?? 0;
+      // Solo actualizar si el número de fichajes cambió
+      if (totalNuevo !== totalAnterior) {
+        state.estadoHoy = estado;
+        actualizarUIFichaje();
+        iniciarAnillo();
+      }
+    } catch(e) { /* silencioso — no interrumpir la experiencia */ }
+  }, 30000); // cada 30 segundos
 }
 
 window.api = api;
