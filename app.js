@@ -237,11 +237,18 @@ function setupNavegacion() {
 function mostrarPantalla(view) {
   ocultarPantallas();
   document.getElementById('screen-' + view)?.classList.add('active');
-  // Resetear contexto admin al volver a fichar o a empleados
   if (view === 'fichar' || view === 'empleados') {
     state._adminVerEmp = null;
     const h = document.querySelector('#screen-mis-fichajes h2');
     if (h) h.textContent = 'Mis Fichajes';
+  }
+  // Al volver a fichar, refrescar estado en segundo plano por si hubo fichaje NFC
+  if (view === 'fichar') {
+    api('getEstado').then(estado => {
+      state.estadoHoy = estado;
+      actualizarUIFichaje();
+      iniciarAnillo();
+    }).catch(() => {});
   }
   if (view === 'mis-fichajes') cargarMisFichajes();
   if (view === 'dashboard')    cargarDashboard();
@@ -668,16 +675,111 @@ async function cargarDashboard() {
     const año = new Date().getFullYear();
     const dashAño = document.getElementById('dash-año'); if (dashAño) dashAño.textContent = año;
     const resumen = await api('getResumen', { año });
-    const obj = parseInt(state.empleado?.Horas_Anuales||1770);
-    const real = resumen.horasRealizadas||0;
-    const pct  = Math.min(100,Math.round((real/obj)*100));
-    const barra = document.getElementById('dash-barra-anual'); if (barra) barra.style.width=pct+'%';
-    const hReal = document.getElementById('dash-horas-real'); if (hReal) hReal.textContent=real+'h';
-    const hObj  = document.getElementById('dash-horas-obj');  if (hObj)  hObj.textContent='/ '+obj+'h';
-    const dif=real-obj; const difEl=document.getElementById('dash-diferencial');
-    if (difEl) { difEl.textContent=(dif>=0?'+':'')+dif+'h'; difEl.className='diferencial '+(dif>=0?'pos':'neg'); }
+    const obj  = parseFloat(state.empleado?.Horas_Anuales || 1770);
+    const real = resumen.horasRealizadas || 0;
+    const pct  = Math.min(100, Math.round((real / obj) * 100));
+
+    // Barra anual
+    const barra = document.getElementById('dash-barra-anual'); if (barra) barra.style.width = pct + '%';
+    const hReal = document.getElementById('dash-horas-real'); if (hReal) hReal.textContent = real + 'h';
+    const hObj  = document.getElementById('dash-horas-obj');  if (hObj)  hObj.textContent  = '/ ' + obj + 'h';
+    const dif   = parseFloat((real - obj).toFixed(1));
+    const difEl = document.getElementById('dash-diferencial');
+    if (difEl) { difEl.textContent = (dif >= 0 ? '+' : '') + dif + 'h'; difEl.className = 'diferencial ' + (dif >= 0 ? 'pos' : 'neg'); }
+
+    // Horas restantes para acabar el año
+    const restantes = Math.max(0, obj - real);
+    const dashRestantes = document.getElementById('dash-horas-restantes');
+    if (dashRestantes) dashRestantes.textContent = restantes > 0 ? 'Faltan ' + restantes.toFixed(1) + 'h para el objetivo anual' : '✅ Objetivo anual superado';
+
+    // Trimestres
+    renderTrimestres(resumen.objetivosPorTrimestre || {}, resumen.detalleDias || []);
+
+    // Calendario mes actual
+    const mesInput = document.getElementById('dash-mes');
+    if (mesInput && !mesInput.value) {
+      const hoy = new Date();
+      mesInput.value = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0');
+    }
+    if (mesInput) {
+      mesInput.onchange = () => renderCalendario(resumen.detalleDias || [], mesInput.value);
+      renderCalendario(resumen.detalleDias || [], mesInput.value);
+    }
+
+    // Semana
     if (resumen.semana) renderSemana(resumen.semana);
   } catch(err) { console.error('Dashboard:', err); }
+}
+
+function renderTrimestres(objetivos, detalleDias) {
+  const grid = document.getElementById('trimestres-grid'); if (!grid) return;
+  const mesActual = new Date().getMonth() + 1;
+  const trimActual = Math.ceil(mesActual / 3);
+
+  // Calcular horas reales por trimestre desde detalleDias
+  const horasPorTrim = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  detalleDias.forEach(d => {
+    const mes = parseInt((d.fecha || '').split('-')[1] || '0');
+    const trim = Math.ceil(mes / 3);
+    if (trim >= 1 && trim <= 4) horasPorTrim[trim] += d.horas || 0;
+  });
+
+  // Objetivo por defecto si no está configurado: Horas_Anuales / 4
+  const horasAnuales = parseFloat(state.empleado?.Horas_Anuales || 1770);
+  const objDef = horasAnuales / 4;
+
+  grid.innerHTML = [1, 2, 3, 4].map(q => {
+    const objQ  = parseFloat(objetivos['Q' + q] || objDef);
+    const realQ = parseFloat(horasPorTrim[q].toFixed(1));
+    const pctQ  = Math.min(100, Math.round((realQ / objQ) * 100));
+    const esActual = q === trimActual;
+    const completado = q < trimActual;
+    return `<div class="trim-card ${esActual ? 'activo' : ''} ${completado ? 'completado' : ''}">
+      <div class="trim-label">Q${q} ${completado ? '✅' : esActual ? '▶' : ''}</div>
+      <div class="trim-horas">${realQ}h</div>
+      <div class="trim-obj">/ ${objQ}h objetivo</div>
+      <div class="progress-bar-wrap" style="margin-top:8px">
+        <div class="progress-bar" style="width:${pctQ}%"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderCalendario(detalleDias, mesStr) {
+  const grid = document.getElementById('calendario-grid'); if (!grid) return;
+  if (!mesStr) return;
+
+  const [año, mes] = mesStr.split('-').map(Number);
+  const hoy = new Date();
+  const esHoy = (d) => d === hoy.getDate() && mes === hoy.getMonth()+1 && año === hoy.getFullYear();
+
+  // Mapa de horas por fecha
+  const horasPorDia = {};
+  detalleDias.forEach(d => { horasPorDia[d.fecha] = d.horas || 0; });
+
+  // Primer día del mes (0=Dom, 1=Lun...)
+  const primerDia = new Date(año, mes-1, 1).getDay();
+  const primerLunes = primerDia === 0 ? 6 : primerDia - 1;
+  const diasEnMes = new Date(año, mes, 0).getDate();
+  const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia || 6.5);
+
+  const headers = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'].map(d =>
+    `<div class="cal-day-header">${d}</div>`).join('');
+
+  const vacios = Array(primerLunes).fill('<div class="cal-day vacio"></div>').join('');
+
+  const dias = Array.from({length: diasEnMes}, (_, i) => {
+    const d = i + 1;
+    const fechaStr = año + '-' + String(mes).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    const horas = horasPorDia[fechaStr] || 0;
+    let clase = 'cal-day';
+    if (esHoy(d)) clase += ' hoy';
+    else if (horas > 0) clase += ' ok';
+    const horasText = horas > 0 ? `<div class="cal-horas">${horas.toFixed(1)}h</div>` : '';
+    return `<div class="${clase}"><span>${d}</span>${horasText}</div>`;
+  }).join('');
+
+  grid.innerHTML = headers + vacios + dias;
 }
 
 function renderSemana(dias) {
@@ -819,25 +921,41 @@ async function cargarUbicaciones() {
   const lista = document.getElementById('lista-ubicaciones'); if (!lista) return;
   lista.innerHTML = '<div class="empty-state">Cargando…</div>';
   try {
+    // Cargar empleados si no están cargados (para los enlaces NFC)
+    if (!state.empleados || !state.empleados.length) {
+      try { state.empleados = await api('getEmpleados'); } catch(e) {}
+    }
     state.ubicaciones = await api('getUbicaciones');
     // URL de Telegram para NFC — abre el bot y ficha directamente sin abrir la web
-    const baseUrl = 'https://t.me/Controlpresencia_bot?start=';
+    const nfcBase = APPS_SCRIPT_URL + '?action=ficharNFC&loc=';
+    const empsActivos = (state.empleados && state.empleados.length)
+      ? state.empleados.filter(e => e.Activo?.toString().toLowerCase() === 'true')
+      : [];
+
     lista.innerHTML = state.ubicaciones.map(u => {
       const nfc = u.NFC_Param || u.ID_Ubicacion;
-      const url = baseUrl + encodeURIComponent(nfc);
-      return `<div class="admin-card ubi-card">
-        <div class="admin-card-info">
+      // Generar enlaces NFC por empleado
+      const enlacesEmp = empsActivos.map(emp => {
+        const url = nfcBase + encodeURIComponent(nfc) + '&tgId=' + emp.Telegram_ID;
+        return `<div class="ubi-emp-row">
+          <span class="ubi-emp-nombre">${emp.Nombre_Completo}</span>
+          <div class="ubi-url-wrap">
+            <span class="ubi-url" title="${url}">${url}</span>
+            <button class="btn-copy" onclick="copiarUrl('${url}')" title="Copiar">📋</button>
+          </div>
+        </div>`;
+      }).join('');
+
+      return `<div class="admin-card ubi-card" style="flex-direction:column;align-items:stretch">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:${empsActivos.length?'10px':'0'}">
           <span style="font-size:18px">📍</span>
-          <div style="flex:1;min-width:0">
+          <div style="flex:1">
             <div class="admin-card-name">${u.Nombre}</div>
             ${u.Descripcion?`<div class="admin-card-sub">${u.Descripcion}</div>`:''}
-            <div class="ubi-url-wrap">
-              <span class="ubi-url" title="${url}">${url}</span>
-              <button class="btn-copy" onclick="copiarUrl('${url}')" title="Copiar enlace NFC">📋</button>
-            </div>
           </div>
+          <button class="btn btn-sm btn-ghost" onclick="editarUbicacion('${u.ID_Ubicacion}')">✏️</button>
         </div>
-        <button class="btn btn-sm btn-ghost" onclick="editarUbicacion('${u.ID_Ubicacion}')">✏️</button>
+        ${enlacesEmp ? `<div class="ubi-empleados">${enlacesEmp}</div>` : ''}
       </div>`;
     }).join('') || '<div class="empty-state">Sin ubicaciones</div>';
     const btnNueva = document.getElementById('btn-nueva-ubicacion');
