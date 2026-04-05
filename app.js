@@ -805,13 +805,38 @@ function renderCalendario(detalleDias, mesStr) {
 function renderSemana(dias) {
   const cont = document.getElementById('semana-bars'); if (!cont) return;
   const names = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
-  const max = Math.max(...dias.map(d=>d.minutos||0),1);
-  cont.innerHTML = dias.map((d,i) => `
-    <div class="semana-col">
-      <div class="semana-bar-wrap"><div class="semana-bar" style="height:${Math.round(((d.minutos||0)/max)*100)}%"></div></div>
+  const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia) > 0
+    ? parseFloat(state.empleado.Jornada_Base_Dia) : 6.5;
+  const minsBase = jornadaBase * 60;
+  const max = Math.max(...dias.map(d => d.minutos || 0), minsBase, 1);
+
+  function formatConMinutos(mins) {
+    if (!mins) return '';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h + 'h' + (m > 0 ? ' ' + m + ''' : '');
+  }
+
+  cont.innerHTML = dias.map((d, i) => {
+    const mins = d.minutos || 0;
+    const pctTotal = Math.round((mins / max) * 100);
+    const minsAzul  = Math.min(mins, minsBase);
+    const minsVerde = Math.max(0, mins - minsBase);
+    // Proporciones dentro de la barra
+    const pctAzul  = pctTotal > 0 ? Math.round((minsAzul  / mins) * 100) : 100;
+    const pctVerde = pctTotal > 0 ? Math.round((minsVerde / mins) * 100) : 0;
+
+    return `<div class="semana-col">
+      <div class="semana-bar-wrap">
+        <div class="semana-bar-stack" style="height:${pctTotal}%">
+          <div class="semana-bar-verde" style="height:${pctVerde}%"></div>
+          <div class="semana-bar-azul"  style="height:${pctAzul}%"></div>
+        </div>
+      </div>
       <div class="semana-label">${names[i]}</div>
-      <div class="semana-h">${d.minutos?Math.floor(d.minutos/60)+'h':''}</div>
-    </div>`).join('');
+      <div class="semana-h">${formatConMinutos(mins)}</div>
+    </div>`;
+  }).join('');
 }
 
 // ── ADMIN: EMPLEADOS ──────────────────────────────────────────────
