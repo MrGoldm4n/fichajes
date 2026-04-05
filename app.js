@@ -756,12 +756,12 @@ function renderCalendario(detalleDias, mesStr) {
   const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia || 6.5);
   const minsBase = jornadaBase * 60;
 
-  // Mapa por fecha: { minutos, minsDescanso }
+  // Mapa por fecha usando minutos directamente del backend
   const datosPorDia = {};
   detalleDias.forEach(d => {
     datosPorDia[d.fecha] = {
-      mins:     Math.round((d.horas || 0) * 60),
-      descanso: d.minsDescanso || 0
+      mins:     parseInt(d.minutos || 0, 10),
+      descanso: parseInt(d.minsDescanso || 0, 10)
     };
   });
 
@@ -786,23 +786,16 @@ function renderCalendario(detalleDias, mesStr) {
 
     let dots = '';
     if (mins > 0) {
-      const minsJornada  = Math.min(mins, minsBase);
-      const minsBolsa    = Math.max(0, mins - minsBase);
-
+      const minsJornada = Math.min(mins, minsBase);
+      const minsBolsa   = Math.max(0, mins - minsBase);
       dots = '<div class="cal-dots">';
-      // Punto azul: jornada base
-      dots += `<div class="cal-dot base"><div class="cal-dot-circle"></div>${formatMins(minsJornada)}</div>`;
-      // Punto verde: bolsa (solo si hay)
-      if (minsBolsa > 0) dots += `<div class="cal-dot bolsa"><div class="cal-dot-circle"></div>${formatMins(minsBolsa)}</div>`;
-      // Punto naranja: descanso (solo si hay)
-      if (descanso > 0) dots += `<div class="cal-dot descanso"><div class="cal-dot-circle"></div>${formatMins(descanso)}</div>`;
+      dots += `<div class="cal-dot base"><div class="cal-dot-circle"></div><span>${formatMins(minsJornada)}</span></div>`;
+      if (minsBolsa > 0) dots += `<div class="cal-dot bolsa"><div class="cal-dot-circle"></div><span>${formatMins(minsBolsa)}</span></div>`;
+      if (descanso > 0)  dots += `<div class="cal-dot descanso"><div class="cal-dot-circle"></div><span>${formatMins(descanso)}</span></div>`;
       dots += '</div>';
     }
 
-    return `<div class="${clase}">
-      <span class="cal-num">${d}</span>
-      ${dots}
-    </div>`;
+    return `<div class="${clase}"><span class="cal-num">${d}</span>${dots}</div>`;
   }).join('');
 
   grid.innerHTML = headers + vacios + dias;
