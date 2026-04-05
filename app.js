@@ -751,9 +751,66 @@ async function cargarDashboard() {
       renderCalendario(resumen.detalleDias || [], mesInput.value);
     }
 
-    // Semana
+    // Semana y bolsa de horas
     if (resumen.semana) renderSemana(resumen.semana);
+
+    // Bolsa de horas anual
+    const bolsaAnual = parseFloat(state.empleado?.Bolsa_Anual) > 0
+      ? parseFloat(state.empleado.Bolsa_Anual) : 0;
+    const bolsaReal = parseFloat(resumen.horasRealizadas || 0) -
+      Math.min(parseFloat(resumen.horasRealizadas || 0),
+               parseFloat(state.empleado?.Jornada_Base_Dia || 6.5) * 365 / 12 * 12);
+    // Calcular bolsa real desde detalleDias
+    let minsJornadaTotal = 0;
+    let minsTotalReal = 0;
+    const jornadaBaseH = parseFloat(state.empleado?.Jornada_Base_Dia) > 0
+      ? parseFloat(state.empleado.Jornada_Base_Dia) : 6.5;
+    (resumen.detalleDias || []).forEach(d => {
+      const mins = d.minutos || 0;
+      minsTotalReal += mins;
+      minsJornadaTotal += Math.min(mins, jornadaBaseH * 60);
+    });
+    const minsBolsaReal = Math.max(0, minsTotalReal - minsJornadaTotal);
+    const horasBolsaReal = parseFloat((minsBolsaReal / 60).toFixed(1));
+    renderBolsaGauge(horasBolsaReal, bolsaAnual);
   } catch(err) { console.error('Dashboard:', err); }
+}
+
+function renderBolsaGauge(real, objetivo) {
+  const cont = document.getElementById('bolsa-gauge'); if (!cont) return;
+  const pct = objetivo > 0 ? Math.min(100, Math.round((real / objetivo) * 100)) : 0;
+
+  // Semicírculo SVG
+  const r = 70, cx = 90, cy = 85;
+  const startAngle = Math.PI;
+  const endAngle   = 2 * Math.PI;
+  const fillAngle  = startAngle + (endAngle - startAngle) * (pct / 100);
+
+  function arc(a1, a2, radius) {
+    const x1 = cx + radius * Math.cos(a1);
+    const y1 = cy + radius * Math.sin(a1);
+    const x2 = cx + radius * Math.cos(a2);
+    const y2 = cy + radius * Math.sin(a2);
+    const large = (a2 - a1) > Math.PI ? 1 : 0;
+    return 'M ' + x1.toFixed(2) + ' ' + y1.toFixed(2) +
+           ' A ' + radius + ' ' + radius + ' 0 ' + large + ' 1 ' +
+           x2.toFixed(2) + ' ' + y2.toFixed(2);
+  }
+
+  // Color dinámico según % (azul→verde→naranja)
+  const color = pct < 50 ? '#4f8ef7' : pct < 85 ? '#2ecc71' : '#f39c12';
+
+  cont.innerHTML = '<svg viewBox="0 0 180 100" style="width:100%;overflow:visible">' +
+    // Arco fondo
+    '<path d="' + arc(Math.PI, 2*Math.PI, r) + '" fill="none" stroke="#252550" stroke-width="14" stroke-linecap="round"/>' +
+    // Arco relleno
+    (pct > 0 ? '<path d="' + arc(Math.PI, fillAngle, r) + '" fill="none" stroke="' + color + '" stroke-width="14" stroke-linecap="round"/>' : '') +
+    // Número central
+    '<text x="' + cx + '" y="' + (cy - 8) + '" text-anchor="middle" font-size="22" font-weight="700" fill="#e8eaf6">' + real + 'h</text>' +
+    '<text x="' + cx + '" y="' + (cy + 10) + '" text-anchor="middle" font-size="11" fill="#8892b0">/ ' + (objetivo > 0 ? objetivo + 'h obj.' : 'sin objetivo') + '</text>' +
+    '<text x="' + cx + '" y="' + (cy + 26) + '" text-anchor="middle" font-size="13" font-weight="600" fill="' + color + '">' + pct + '%</text>' +
+    '</svg>' +
+    '<div style="text-align:center;font-size:11px;color:#8892b0;margin-top:4px">Bolsa de horas ' + new Date().getFullYear() + '</div>';
 }
 
 function renderTrimestres(objetivos, detalleDias) {
