@@ -906,8 +906,16 @@ function renderCalendario(detalleDias, mesStr) {
 
 function renderSemana(dias) {
   const cont = document.getElementById('semana-bars'); if (!cont) return;
-  // Nombres de días basados en la fecha real de cada día, no fijos
   const diasSemana = ['Do','Lu','Ma','Mi','Ju','Vi','Sa']; // 0=Dom, 1=Lun...
+  // Ordenar de lunes a domingo
+  dias = [...dias].sort((a, b) => {
+    const da = new Date(a.fecha + 'T12:00:00').getDay();
+    const db = new Date(b.fecha + 'T12:00:00').getDay();
+    // Convertir domingo(0) a 7 para que quede al final
+    const ia = da === 0 ? 7 : da;
+    const ib = db === 0 ? 7 : db;
+    return ia - ib;
+  });
   const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia) > 0
     ? parseFloat(state.empleado.Jornada_Base_Dia) : 6.5;
   const minsBase = jornadaBase * 60;
