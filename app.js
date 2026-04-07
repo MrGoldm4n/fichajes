@@ -906,7 +906,8 @@ function renderCalendario(detalleDias, mesStr) {
 
 function renderSemana(dias) {
   const cont = document.getElementById('semana-bars'); if (!cont) return;
-  const names = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
+  // Nombres de días basados en la fecha real de cada día, no fijos
+  const diasSemana = ['Do','Lu','Ma','Mi','Ju','Vi','Sa']; // 0=Dom, 1=Lun...
   const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia) > 0
     ? parseFloat(state.empleado.Jornada_Base_Dia) : 6.5;
   const minsBase = jornadaBase * 60;
@@ -935,7 +936,7 @@ function renderSemana(dias) {
           <div class="semana-bar-azul"  style="height:${pctAzul}%"></div>
         </div>
       </div>
-      <div class="semana-label">${names[i]}</div>
+      <div class="semana-label">${d.fecha ? diasSemana[new Date(d.fecha + 'T12:00:00').getDay()] : ''}</div>
       <div class="semana-h">${formatConMinutos(mins)}</div>
     </div>`;
   }).join('');
