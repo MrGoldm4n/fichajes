@@ -943,7 +943,7 @@ function renderCalendario(detalleDias, mesStr, ausencias) {
       ? `onclick="abrirModalDia('${fechaStr}', ${mins}, ${esIncompletoDia}, ${esSinFichajesModal})"`
       : '';
 
-    return `<div class="${clase}" style="${estilo}cursor:${esAnterior && diaSemana !== 0 ?'pointer':'default'}" ${clickable}>
+    return `<div class="${clase}" style="${estilo}cursor:${esAnterior ?'pointer':'default'}" ${clickable}>
       <span class="cal-num">${d}</span>${dots}${textoExtra}</div>`;
   }).join('');
 
