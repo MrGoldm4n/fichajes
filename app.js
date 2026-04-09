@@ -749,8 +749,9 @@ async function cargarDashboard() {
       mesInput.value = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0');
     }
     if (mesInput) {
-      mesInput.onchange = () => renderCalendario(resumen.detalleDias || [], mesInput.value, ausencias);
-      renderCalendario(resumen.detalleDias || [], mesInput.value, ausencias);
+      window._lastResumenDias = resumen.detalleDias || [];
+      mesInput.onchange = () => renderCalendario(window._lastResumenDias, mesInput.value, state._ausencias || []);
+      renderCalendario(window._lastResumenDias, mesInput.value, ausencias);
     }
 
     // Semana y bolsa de horas
@@ -934,10 +935,12 @@ function renderCalendario(detalleDias, mesStr, ausencias) {
     // Clickable para días anteriores (añadir fichaje o ausencia)
     const esSinFichajes = mins === 0 && esAnterior && diaSemana !== 0 && !ausenciasPorDia.hasOwnProperty(fechaStr);
     const esIncompletoDia = mins > 0 && mins < minsBase && esAnterior;
-    // Días con ausencia justificada no son clickeables para re-abrir modal de ausencia
-    const tieneAusencia = ausenciasPorDia.hasOwnProperty(fechaStr);
-    const clickable = esAnterior && diaSemana !== 0
-      ? `onclick="abrirModalDia('${fechaStr}', ${mins}, ${esIncompletoDia}, ${esSinFichajes})"`
+    // Domingos: clickeables con ambas opciones (fichaje + comentario ausencia)
+    const esDomingo = diaSemana === 0;
+    // esSinFichajes incluye domingos para que puedan poner comentario de ausencia
+    const esSinFichajesModal = mins === 0 && esAnterior && !ausenciasPorDia.hasOwnProperty(fechaStr);
+    const clickable = esAnterior
+      ? `onclick="abrirModalDia('${fechaStr}', ${mins}, ${esIncompletoDia}, ${esSinFichajesModal})"`
       : '';
 
     return `<div class="${clase}" style="${estilo}cursor:${esAnterior && diaSemana !== 0 ?'pointer':'default'}" ${clickable}>
@@ -1361,10 +1364,16 @@ async function guardarAusenciaModal(fecha) {
     });
     toast('✅ Ausencia guardada', 'ok');
     document.getElementById('modal-dia')?.remove();
-    // Refrescar ausencias y calendario
-    const ausencias = await api('getAusencias', {}).catch(() => []);
-    state._ausencias = ausencias;
-    cargarDashboard();
+    // Refrescar ausencias y redibujar calendario sin recargar todo el dashboard
+    const ausenciasNew = await api('getAusencias', {}).catch(() => []);
+    state._ausencias = ausenciasNew;
+    // Redibujar solo el calendario con los datos actuales
+    const mesInput = document.getElementById('dash-mes');
+    if (mesInput && window._lastResumenDias) {
+      renderCalendario(window._lastResumenDias, mesInput.value, ausenciasNew);
+    } else {
+      cargarDashboard();
+    }
   } catch(err) { toast('❌ ' + err.message, 'error'); }
 }
 
