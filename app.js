@@ -720,6 +720,8 @@ async function cargarDashboard() {
     const numEmpSel = esAdmin && document.getElementById('dash-emp-select')?.value || '';
     const params = numEmpSel ? { año, numEmp: numEmpSel } : { año };
     const resumen = await api('getResumen', params);
+    const ausencias = await api('getAusencias', numEmpSel ? { numEmp: numEmpSel } : {}).catch(() => []);
+    state._ausencias = ausencias;
     const obj  = parseFloat(state.empleado?.Horas_Anuales || 1770);
     const real = resumen.horasRealizadas || 0;
     const pct  = Math.min(100, Math.round((real / obj) * 100));
@@ -747,8 +749,8 @@ async function cargarDashboard() {
       mesInput.value = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0');
     }
     if (mesInput) {
-      mesInput.onchange = () => renderCalendario(resumen.detalleDias || [], mesInput.value);
-      renderCalendario(resumen.detalleDias || [], mesInput.value);
+      mesInput.onchange = () => renderCalendario(resumen.detalleDias || [], mesInput.value, ausencias);
+      renderCalendario(resumen.detalleDias || [], mesInput.value, ausencias);
     }
 
     // Semana y bolsa de horas
@@ -847,7 +849,8 @@ function renderTrimestres(objetivos, detalleDias) {
   }).join('');
 }
 
-function renderCalendario(detalleDias, mesStr) {
+function renderCalendario(detalleDias, mesStr, ausencias) {
+  ausencias = ausencias || [];
   const grid = document.getElementById('calendario-grid'); if (!grid) return;
   if (!mesStr) return;
 
@@ -867,6 +870,9 @@ function renderCalendario(detalleDias, mesStr) {
       descanso: parseInt(d.minsDescanso || 0, 10)
     };
   });
+  // Mapa de ausencias por fecha
+  const ausenciasPorDia = {};
+  ausencias.forEach(a => { ausenciasPorDia[a.Fecha] = a.Comentario || ''; });
 
   const primerDia = new Date(año, mes-1, 1).getDay();
   const primerLunes = primerDia === 0 ? 6 : primerDia - 1;
@@ -880,12 +886,35 @@ function renderCalendario(detalleDias, mesStr) {
   const dias = Array.from({length: diasEnMes}, (_, i) => {
     const d = i + 1;
     const fechaStr = año + '-' + String(mes).padStart(2,'0') + '-' + String(d).padStart(2,'0');
-    const datos = datosPorDia[fechaStr];
-    const mins = datos?.mins || 0;
+    const datos   = datosPorDia[fechaStr];
+    const mins    = datos?.mins || 0;
     const descanso = datos?.descanso || 0;
+    const esAnterior = fechaStr < fechaHoy() && !esHoy(d);
+    const ausencia = ausenciasPorDia[fechaStr];
+    const diaSemana = new Date(fechaStr + 'T12:00:00').getDay(); // 0=Dom
 
     let clase = 'cal-day';
-    if (esHoy(d)) clase += ' hoy';
+    if (esHoy(d))  clase += ' hoy';
+
+    let estilo = '';
+    let textoExtra = '';
+
+    if (!esHoy(d) && esAnterior) {
+      if (mins > 0 && mins < minsBase) {
+        // Jornada incompleta → rojo
+        estilo = 'border: 2px solid #e74c3c;';
+      } else if (mins === 0 && diaSemana !== 0) {
+        // Sin fichajes en día laborable → naranja o justificado
+        if (ausencia !== undefined) {
+          // Tiene ausencia justificada
+          estilo = 'border: 2px solid #555; opacity:0.7;';
+          textoExtra = `<div class="cal-ausencia">${ausencia || 'Ausencia'}</div>`;
+        } else {
+          // Sin justificar → naranja
+          estilo = 'border: 2px solid #f39c12;';
+        }
+      }
+    }
 
     let dots = '';
     if (mins > 0) {
@@ -898,7 +927,13 @@ function renderCalendario(detalleDias, mesStr) {
       dots += '</div>';
     }
 
-    return `<div class="${clase}"><span class="cal-num">${d}</span>${dots}</div>`;
+    // Clickable para días anteriores (añadir fichaje o ausencia)
+    const clickable = esAnterior && diaSemana !== 0
+      ? `onclick="abrirModalDia('${fechaStr}', ${mins}, ${mins < minsBase && mins > 0 ? 'true' : 'false'})"`
+      : '';
+
+    return `<div class="${clase}" style="${estilo}cursor:${esAnterior && diaSemana !== 0 ?'pointer':'default'}" ${clickable}>
+      <span class="cal-num">${d}</span>${dots}${textoExtra}</div>`;
   }).join('');
 
   grid.innerHTML = headers + vacios + dias;
@@ -1208,11 +1243,26 @@ async function cargarIncidencias() {
             ${resuelta?'<div class="admin-card-sub">Resuelta por: '+inc.Resuelta_Por+'</div>':''}
           </div>
         </div>
-        ${!resuelta?`<button class="btn btn-sm btn-primary" onclick="resolverIncidencia('${inc.ID}')">Resolver</button>`
-          :'<span class="badge ok">Resuelta</span>'}
+        ${!resuelta ? `<button class="btn btn-sm btn-primary" onclick="accionIncidencia('${inc.ID}','${inc.Tipo_Incidencia}','${inc.Fecha}','${inc.Numero_Empleado}')">Resolver</button>`
+          : '<span class="badge ok">Resuelta</span>'}
       </div>`;
     }).join('');
   } catch(err) { lista.innerHTML='<div class="empty-state error">'+err.message+'</div>'; }
+}
+
+function accionIncidencia(id, tipo, fecha, numEmp) {
+  if (tipo === 'AUSENCIA') {
+    // Abrir modal de ausencia para ese día
+    abrirModalDia(fecha, 0, false);
+    // Pre-rellenar numEmp si admin
+    state._incidenciaActiva = { id, numEmp };
+  } else if (tipo === 'FICHAJES_IMPARES') {
+    // Abrir fichaje manual para ese día
+    abrirFichajeManualDia(fecha);
+    state._incidenciaActiva = { id, numEmp };
+  } else {
+    resolverIncidencia(id);
+  }
 }
 
 async function resolverIncidencia(id) {
@@ -1224,6 +1274,62 @@ async function resolverIncidencia(id) {
   } catch(err) { toast('❌ ' + err.message, 'error'); }
 }
 
+
+
+// ── MODAL DÍA DEL CALENDARIO ─────────────────────────────────────
+function abrirModalDia(fecha, mins, esIncompleto) {
+  document.getElementById('modal-dia')?.remove();
+  const ausencia = (state._ausencias || []).find(a => a.Fecha === fecha);
+  const titulo = esIncompleto ? '🔴 Jornada incompleta' : '🟠 Ausencia sin justificar';
+  const fechaFmt = new Date(fecha + 'T12:00:00').toLocaleDateString('es-ES', {weekday:'long', day:'numeric', month:'long'});
+
+  const html = `<div class="modal-overlay" id="modal-dia" style="display:flex">
+    <div class="modal-card">
+      <h3>${titulo}</h3>
+      <div class="admin-card-sub" style="margin-bottom:12px">${fechaFmt}</div>
+      ${mins > 0 ? `<div class="admin-card-sub">Horas registradas: ${formatMins(mins)}</div>` : ''}
+      ${esIncompleto ? `
+        <p style="font-size:13px;color:var(--text2);margin:12px 0">¿Falta algún fichaje? Puedes añadirlo manualmente:</p>
+        <button class="btn btn-primary" onclick="abrirFichajeManualDia('${fecha}')">➕ Añadir fichaje</button>
+      ` : ''}
+      <label class="field-label mt">Comentario de ausencia</label>
+      <input type="text" id="dia-comentario" class="select-field"
+        value="${ausencia?.Comentario || ''}"
+        placeholder="Ej: Descanso S., Festivo, Baja..."/>
+      <div class="modal-btns mt">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-dia').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarAusenciaModal('${fecha}')">Guardar ausencia</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(() => document.getElementById('dia-comentario')?.focus(), 100);
+}
+
+function abrirFichajeManualDia(fecha) {
+  document.getElementById('modal-dia')?.remove();
+  document.getElementById('manual-fecha').value = fecha;
+  document.getElementById('manual-hora').value  = '';
+  document.getElementById('manual-comentario').value = '';
+  document.getElementById('modal-manual')?.classList.remove('hidden');
+}
+
+async function guardarAusenciaModal(fecha) {
+  const comentario = document.getElementById('dia-comentario')?.value?.trim();
+  if (!comentario) { toast('Añade un comentario para la ausencia', 'error'); return; }
+  try {
+    await api('guardarAusencia', { fecha, comentario,
+      numEmp: state._adminVerEmpDash || state.empleado.Numero_Empleado,
+      nombreEmp: state.empleado.Nombre_Completo
+    });
+    toast('✅ Ausencia guardada', 'ok');
+    document.getElementById('modal-dia')?.remove();
+    // Refrescar ausencias y calendario
+    const ausencias = await api('getAusencias', {}).catch(() => []);
+    state._ausencias = ausencias;
+    cargarDashboard();
+  } catch(err) { toast('❌ ' + err.message, 'error'); }
+}
 
 // ── EXPORTAR FICHAJES ─────────────────────────────────────────────
 function abrirExportar(id, nombre, numero) {
