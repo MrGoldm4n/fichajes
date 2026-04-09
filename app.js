@@ -870,9 +870,12 @@ function renderCalendario(detalleDias, mesStr, ausencias) {
       descanso: parseInt(d.minsDescanso || 0, 10)
     };
   });
-  // Mapa de ausencias por fecha
+  // Mapa de ausencias por fecha — normalizar formato
   const ausenciasPorDia = {};
-  ausencias.forEach(a => { ausenciasPorDia[a.Fecha] = a.Comentario || ''; });
+  ausencias.forEach(a => {
+    const f = (a.Fecha || '').toString().slice(0, 10);
+    if (f) ausenciasPorDia[f] = a.Comentario || '';
+  });
 
   const primerDia = new Date(año, mes-1, 1).getDay();
   const primerLunes = primerDia === 0 ? 6 : primerDia - 1;
@@ -905,10 +908,11 @@ function renderCalendario(detalleDias, mesStr, ausencias) {
         estilo = 'border: 2px solid #e74c3c;';
       } else if (mins === 0 && diaSemana !== 0) {
         // Sin fichajes en día laborable → naranja o justificado
-        if (ausencia !== undefined) {
-          // Tiene ausencia justificada
-          estilo = 'border: 2px solid #555; opacity:0.7;';
-          textoExtra = `<div class="cal-ausencia">${ausencia || 'Ausencia'}</div>`;
+        if (ausenciasPorDia.hasOwnProperty(fechaStr)) {
+          const textoAus = ausenciasPorDia[fechaStr];
+          // Tiene ausencia justificada → gris con texto
+          estilo = 'border: 2px solid #555; opacity:0.75;';
+          textoExtra = `<div class="cal-ausencia">${textoAus || 'Ausencia'}</div>`;
         } else {
           // Sin justificar → naranja
           estilo = 'border: 2px solid #f39c12;';
@@ -928,8 +932,12 @@ function renderCalendario(detalleDias, mesStr, ausencias) {
     }
 
     // Clickable para días anteriores (añadir fichaje o ausencia)
+    const esSinFichajes = mins === 0 && esAnterior && diaSemana !== 0 && !ausenciasPorDia.hasOwnProperty(fechaStr);
+    const esIncompletoDia = mins > 0 && mins < minsBase && esAnterior;
+    // Días con ausencia justificada no son clickeables para re-abrir modal de ausencia
+    const tieneAusencia = ausenciasPorDia.hasOwnProperty(fechaStr);
     const clickable = esAnterior && diaSemana !== 0
-      ? `onclick="abrirModalDia('${fechaStr}', ${mins}, ${mins < minsBase && mins > 0 ? 'true' : 'false'})"`
+      ? `onclick="abrirModalDia('${fechaStr}', ${mins}, ${esIncompletoDia}, ${esSinFichajes})"`
       : '';
 
     return `<div class="${clase}" style="${estilo}cursor:${esAnterior && diaSemana !== 0 ?'pointer':'default'}" ${clickable}>
@@ -1277,29 +1285,58 @@ async function resolverIncidencia(id) {
 
 
 // ── MODAL DÍA DEL CALENDARIO ─────────────────────────────────────
-function abrirModalDia(fecha, mins, esIncompleto) {
+function abrirModalDia(fecha, mins, esIncompleto, esSinFichajes) {
   document.getElementById('modal-dia')?.remove();
-  const ausencia = (state._ausencias || []).find(a => a.Fecha === fecha);
-  const titulo = esIncompleto ? '🔴 Jornada incompleta' : '🟠 Ausencia sin justificar';
+  const ausencia = (state._ausencias || []).find(a => (a.Fecha||'').slice(0,10) === fecha);
   const fechaFmt = new Date(fecha + 'T12:00:00').toLocaleDateString('es-ES', {weekday:'long', day:'numeric', month:'long'});
 
-  const html = `<div class="modal-overlay" id="modal-dia" style="display:flex">
-    <div class="modal-card">
-      <h3>${titulo}</h3>
-      <div class="admin-card-sub" style="margin-bottom:12px">${fechaFmt}</div>
-      ${mins > 0 ? `<div class="admin-card-sub">Horas registradas: ${formatMins(mins)}</div>` : ''}
-      ${esIncompleto ? `
-        <p style="font-size:13px;color:var(--text2);margin:12px 0">¿Falta algún fichaje? Puedes añadirlo manualmente:</p>
-        <button class="btn btn-primary" onclick="abrirFichajeManualDia('${fecha}')">➕ Añadir fichaje</button>
-      ` : ''}
-      <label class="field-label mt">Comentario de ausencia</label>
+  let titulo, contenido;
+
+  if (esSinFichajes) {
+    // Día naranja: sin fichajes → añadir fichaje O comentario ausencia
+    titulo = '🟠 Ausencia sin justificar';
+    contenido = `
+      <p style="font-size:13px;color:var(--text2);margin:8px 0">¿Faltaste o no fichaste?</p>
+      <button class="btn btn-ghost" style="width:100%;margin-bottom:8px" onclick="abrirFichajeManualDia('${fecha}')">➕ Añadir fichaje olvidado</button>
+      <label class="field-label mt">O justifica la ausencia</label>
       <input type="text" id="dia-comentario" class="select-field"
         value="${ausencia?.Comentario || ''}"
         placeholder="Ej: Descanso S., Festivo, Baja..."/>
       <div class="modal-btns mt">
         <button class="btn btn-ghost" onclick="document.getElementById('modal-dia').remove()">Cancelar</button>
         <button class="btn btn-primary" onclick="guardarAusenciaModal('${fecha}')">Guardar ausencia</button>
-      </div>
+      </div>`;
+  } else if (esIncompleto) {
+    // Día rojo: tiene fichajes pero horas < base → añadir fichaje O comentario justificante
+    titulo = '🔴 Jornada incompleta';
+    contenido = `
+      ${mins > 0 ? `<div class="admin-card-sub" style="margin-bottom:8px">Horas registradas: ${formatMins(mins)}</div>` : ''}
+      <p style="font-size:13px;color:var(--text2);margin:8px 0">¿Falta algún fichaje?</p>
+      <button class="btn btn-ghost" style="width:100%;margin-bottom:8px" onclick="abrirFichajeManualDia('${fecha}')">➕ Añadir fichaje</button>
+      <label class="field-label mt">O añade un comentario justificante</label>
+      <input type="text" id="dia-comentario" class="select-field"
+        value="${ausencia?.Comentario || ''}"
+        placeholder="Ej: Salida médica, Permiso..."/>
+      <div class="modal-btns mt">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-dia').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarAusenciaModal('${fecha}')">Guardar comentario</button>
+      </div>`;
+  } else {
+    // Día sin color con fichajes → solo añadir fichaje
+    titulo = '📋 Añadir fichaje';
+    contenido = `
+      ${mins > 0 ? `<div class="admin-card-sub" style="margin-bottom:8px">Horas registradas: ${formatMins(mins)}</div>` : ''}
+      <button class="btn btn-primary" style="width:100%;margin-top:8px" onclick="abrirFichajeManualDia('${fecha}')">➕ Añadir fichaje</button>
+      <div class="modal-btns mt">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-dia').remove()">Cancelar</button>
+      </div>`;
+  }
+
+  const html = `<div class="modal-overlay" id="modal-dia" style="display:flex">
+    <div class="modal-card">
+      <h3>${titulo}</h3>
+      <div class="admin-card-sub" style="margin-bottom:12px">${fechaFmt}</div>
+      ${contenido}
     </div>
   </div>`;
   document.body.insertAdjacentHTML('beforeend', html);
