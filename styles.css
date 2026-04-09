@@ -492,3 +492,12 @@ body {
   .dash-bottom-row { flex-direction: column; }
   .bolsa-gauge-card { width: 100%; }
 }
+
+/* ── CALENDARIO AUSENCIAS ────────────────────────────────────────── */
+.cal-ausencia {
+  font-size: 8px; color: #888; text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  width: 100%; margin-top: 2px;
+}
+.cal-day[style*="pointer"] { transition: opacity .15s; }
+.cal-day[style*="pointer"]:hover { opacity: .8; }
