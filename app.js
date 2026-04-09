@@ -27,7 +27,7 @@ async function api(action, data = {}) {
   const telegramId  = tg?.initDataUnsafe?.user?.id || '';
   const emailGoogle = state.empleado?.emailGoogle || '';
   const isWrite = ['fichar','corregirFichaje','guardarEmpleado','guardarUbicacion',
-                   'resolverIncidencia','guardarConfig','loginGoogle'].includes(action);
+                   'resolverIncidencia','guardarConfig','loginGoogle','guardarAusencia'].includes(action);
   const payload = { action, telegramId, emailGoogle, ...data };
   let res;
   if (isWrite) {
