@@ -181,8 +181,9 @@ function montarUI() {
   iniciarPolling();
 
   if (emp.Rol?.toLowerCase() === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+  // Alarma desactivada en todos los dispositivos hasta implementación completa
   const btnAlarma = document.getElementById('btn-alarma');
-  if (btnAlarma) { isIOS ? btnAlarma.classList.add('hidden') : btnAlarma.classList.remove('hidden'); }
+  if (btnAlarma) btnAlarma.classList.add('hidden');
 }
 
 // ── SETUP EVENTOS ─────────────────────────────────────────────────
@@ -285,7 +286,7 @@ function actualizarUIFichaje() {
   const btn = document.getElementById('btn-fichar');
   if (btn) btn.className = 'btn btn-fichar' + (s.proximoTipo==='SALIDA'?' salida':'');
   const btnText = document.getElementById('btn-fichar-text');
-  if (btnText) btnText.textContent = 'Registrar ' + (s.proximoTipo||'ENTRADA');
+  if (btnText) btnText.textContent = 'Fichar ' + (s.proximoTipo||'ENTRADA');
 }
 
 // ── ANILLO DINÁMICO ───────────────────────────────────────────────
@@ -617,7 +618,7 @@ async function enviarFichajeManual() {
 
 // ── TIMER DESCANSO (solo Android) ─────────────────────────────────
 function iniciarTimerDescanso() {
-  if (isIOS) return;
+  return; // Alarma desactivada temporalmente
   const raw  = parseInt(state.empleado?.Alarma_Descanso || state.config?.ALARMA_DESCANSO || '25', 10);
   const mins = isNaN(raw) || raw <= 0 ? 25 : raw;
   state.timerSeconds = mins * 60;
