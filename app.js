@@ -741,7 +741,7 @@ async function cargarDashboard() {
     if (dashRestantes) dashRestantes.textContent = restantes > 0 ? 'Faltan ' + restantes.toFixed(1) + 'h para el objetivo anual' : '✅ Objetivo anual superado';
 
     // Trimestres
-    renderTrimestres(resumen.objetivosPorTrimestre || {}, resumen.detalleDias || []);
+    renderTrimestres(resumen.objetivosPorTrimestre || {}, resumen.detalleDias || [], resumen.horasPrevias || 0);
 
     // Calendario mes actual
     const mesInput = document.getElementById('dash-mes');
@@ -817,7 +817,7 @@ function renderBolsaGauge(real, objetivo) {
     '<div style="text-align:center;font-size:11px;color:#8892b0;margin-top:4px">Bolsa de horas ' + new Date().getFullYear() + '</div>';
 }
 
-function renderTrimestres(objetivos, detalleDias) {
+function renderTrimestres(objetivos, detalleDias, horasPrevias) {
   const grid = document.getElementById('trimestres-grid'); if (!grid) return;
   const mesActual = new Date().getMonth() + 1;
   const trimActual = Math.ceil(mesActual / 3);
@@ -829,6 +829,9 @@ function renderTrimestres(objetivos, detalleDias) {
     const trim = Math.ceil(mes / 3);
     if (trim >= 1 && trim <= 4) horasPorTrim[trim] += d.horas || 0;
   });
+
+  // Añadir horas previas al Q1
+  if (horasPrevias > 0) horasPorTrim[1] += horasPrevias;
 
   // Objetivo por defecto si no está configurado: Horas_Anuales / 4
   const horasAnuales = parseFloat(state.empleado?.Horas_Anuales || 1770);
