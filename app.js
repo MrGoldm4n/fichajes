@@ -1079,6 +1079,7 @@ function abrirFormEmpleado(emp) {
   // FIX: usar valor real aunque sea 0, solo usar default si está completamente vacío
   document.getElementById('emp-jornada-base').value= (emp?.Jornada_Base_Dia && emp.Jornada_Base_Dia !== '') ? emp.Jornada_Base_Dia : '6.5';
   document.getElementById('emp-alarma').value      = emp?.Alarma_Descanso   || '25';
+  document.getElementById('emp-horas-previas').value = emp?.Horas_Previas    || '';
   document.getElementById('emp-q1').value          = emp?.Q1                || '';
   document.getElementById('emp-q2').value          = emp?.Q2                || '';
   document.getElementById('emp-q3').value          = emp?.Q3                || '';
@@ -1112,6 +1113,7 @@ async function guardarEmpleadoForm() {
       jornadaBase:      jornadaVal || empActual?.Jornada_Base_Dia || '6.5',
       objetivoDia:      empActual?.Objetivo_Dia || '7.5',
       alarmaDescanso:   document.getElementById('emp-alarma').value,
+      horasPrevias:     document.getElementById('emp-horas-previas').value,
       confirmarFichaje: document.getElementById('emp-confirmar').value,
       Q1:               document.getElementById('emp-q1').value,
       Q2:               document.getElementById('emp-q2').value,
