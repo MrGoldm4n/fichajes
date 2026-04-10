@@ -1375,7 +1375,9 @@ async function guardarAusenciaModal(fecha) {
     toast('✅ Ausencia guardada', 'ok');
     document.getElementById('modal-dia')?.remove();
     // Refrescar ausencias y redibujar calendario sin recargar todo el dashboard
-    const ausenciasNew = await api('getAusencias', {}).catch(() => []);
+    const selDashRefresh = document.getElementById('dash-emp-select');
+    const numEmpRefresh = selDashRefresh?.value || '';
+    const ausenciasNew = await api('getAusencias', numEmpRefresh ? { numEmp: numEmpRefresh } : {}).catch(() => []);
     state._ausencias = ausenciasNew;
     // Redibujar solo el calendario con los datos actuales
     const mesInput = document.getElementById('dash-mes');
