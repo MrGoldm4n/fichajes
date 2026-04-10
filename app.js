@@ -755,7 +755,7 @@ async function cargarDashboard() {
     }
 
     // Semana y bolsa de horas
-    if (resumen.semana) renderSemana(resumen.semana);
+    if (resumen.semana) renderSemana(resumen.semana, ausencias);
 
     // Bolsa de horas anual
     const bolsaAnual = parseFloat(state.empleado?.Bolsa_Anual) > 0
@@ -937,10 +937,11 @@ function renderCalendario(detalleDias, mesStr, ausencias) {
     const esIncompletoDia = mins > 0 && mins < minsBase && esAnterior;
     // Domingos: clickeables con ambas opciones (fichaje + comentario ausencia)
     const esDomingo = diaSemana === 0;
-    // esSinFichajes incluye domingos para que puedan poner comentario de ausencia
-    const esSinFichajesModal = mins === 0 && esAnterior && !ausenciasPorDia.hasOwnProperty(fechaStr);
+    // Todos los días anteriores son clickeables (incluye días con ausencia ya puesta para editar)
+    const esSinFichajesModal = mins === 0 && esAnterior;
+    const tieneAusenciaJustificada = ausenciasPorDia.hasOwnProperty(fechaStr);
     const clickable = esAnterior
-      ? `onclick="abrirModalDia('${fechaStr}', ${mins}, ${esIncompletoDia}, ${esSinFichajesModal})"`
+      ? `onclick="abrirModalDia('${fechaStr}', ${mins}, ${esIncompletoDia}, ${esSinFichajesModal}, ${tieneAusenciaJustificada})"`
       : '';
 
     return `<div class="${clase}" style="${estilo}cursor:${esAnterior ?'pointer':'default'}" ${clickable}>
@@ -991,7 +992,7 @@ function renderSemana(dias) {
         </div>
       </div>
       <div class="semana-label">${d.fecha ? diasSemana[new Date(d.fecha + 'T12:00:00').getDay()] : ''}</div>
-      <div class="semana-h">${formatConMinutos(mins)}</div>
+      <div class="semana-h">${formatConMinutos(mins) || (ausenciasPorFecha[d.fecha] ? '<span style="font-size:9px;color:#888">' + ausenciasPorFecha[d.fecha] + '</span>' : '')}</div>
     </div>`;
   }).join('');
 }
@@ -1288,9 +1289,13 @@ async function resolverIncidencia(id) {
 
 
 // ── MODAL DÍA DEL CALENDARIO ─────────────────────────────────────
-function abrirModalDia(fecha, mins, esIncompleto, esSinFichajes) {
+function abrirModalDia(fecha, mins, esIncompleto, esSinFichajes, tieneAusencia) {
   document.getElementById('modal-dia')?.remove();
   const ausencia = (state._ausencias || []).find(a => (a.Fecha||'').slice(0,10) === fecha);
+  // Si tiene ausencia justificada, mostrar modal de edición
+  if (tieneAusencia && !esIncompleto && !esSinFichajes) {
+    esSinFichajes = true; // forzar modal con campo comentario para editar
+  }
   const fechaFmt = new Date(fecha + 'T12:00:00').toLocaleDateString('es-ES', {weekday:'long', day:'numeric', month:'long'});
 
   let titulo, contenido;
@@ -1358,9 +1363,14 @@ async function guardarAusenciaModal(fecha) {
   const comentario = document.getElementById('dia-comentario')?.value?.trim();
   if (!comentario) { toast('Añade un comentario para la ausencia', 'error'); return; }
   try {
+    // Usar el empleado seleccionado en el dashboard, no el admin
+    const selDash = document.getElementById('dash-emp-select');
+    const numEmpTarget = selDash?.value || state.empleado.Numero_Empleado;
+    const empTarget = (state.empleados || []).find(e => e.Numero_Empleado === numEmpTarget);
+    const nombreTarget = empTarget?.Nombre_Completo || state.empleado.Nombre_Completo;
     await api('guardarAusencia', { fecha, comentario,
-      numEmp: state._adminVerEmpDash || state.empleado.Numero_Empleado,
-      nombreEmp: state.empleado.Nombre_Completo
+      numEmp: numEmpTarget,
+      nombreEmp: nombreTarget
     });
     toast('✅ Ausencia guardada', 'ok');
     document.getElementById('modal-dia')?.remove();
