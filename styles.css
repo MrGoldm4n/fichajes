@@ -345,7 +345,10 @@ body {
 .cal-day {
   border-radius: 6px; display: flex; flex-direction: column;
   align-items: flex-start; justify-content: flex-start;
-  background: var(--bg3); padding: 4px 5px; min-height: 60px;
+  background: var(--bg3); padding: 4px 5px;
+  height: 70px;          /* altura fija igual para todos */
+  overflow: hidden;       /* texto largo no desborda */
+  box-sizing: border-box;
 }
 .cal-day.vacio { background: transparent; opacity: .3; }
 .cal-day.hoy   { background: var(--accent); }
@@ -495,9 +498,9 @@ body {
 
 /* ── CALENDARIO AUSENCIAS ────────────────────────────────────────── */
 .cal-ausencia {
-  font-size: 8px; color: #888; text-align: center;
+  font-size: 8px; color: #aaa; text-align: left;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  width: 100%; margin-top: 2px;
+  width: 100%; margin-top: 2px; line-height: 1.2;
 }
 .cal-day[style*="pointer"] { transition: opacity .15s; }
 .cal-day[style*="pointer"]:hover { opacity: .8; }
