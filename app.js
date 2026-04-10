@@ -950,8 +950,11 @@ function renderCalendario(detalleDias, mesStr, ausencias) {
   grid.innerHTML = headers + vacios + dias;
 }
 
-function renderSemana(dias) {
+function renderSemana(dias, ausencias) {
   const cont = document.getElementById('semana-bars'); if (!cont) return;
+  ausencias = ausencias || [];
+  const ausenciasPorFecha = {};
+  ausencias.forEach(a => { ausenciasPorFecha[(a.Fecha||'').slice(0,10)] = a.Comentario || 'Ausencia'; });
   const diasSemana = ['Do','Lu','Ma','Mi','Ju','Vi','Sa']; // 0=Dom, 1=Lun...
   // Ordenar de lunes a domingo
   dias = [...dias].sort((a, b) => {
