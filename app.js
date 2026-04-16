@@ -27,7 +27,8 @@ async function api(action, data = {}) {
   const telegramId  = tg?.initDataUnsafe?.user?.id || '';
   const emailGoogle = state.empleado?.emailGoogle || '';
   const isWrite = ['fichar','corregirFichaje','guardarEmpleado','guardarUbicacion',
-                   'resolverIncidencia','guardarConfig','loginGoogle','guardarAusencia'].includes(action);
+                   'resolverIncidencia','guardarConfig','loginGoogle','guardarAusencia',
+                   'actualizarComentario'].includes(action);
   const payload = { action, telegramId, emailGoogle, ...data };
   let res;
   if (isWrite) {
@@ -679,12 +680,12 @@ async function cargarMisFichajes() {
     lista.innerHTML = Object.keys(porDia).sort().reverse().map(fecha => {
       const fd = porDia[fecha]; const horas = calcularHorasDia(fd);
       const filas = fd.map(f => `
-        <div class="fichaje-row">
+        <div class="fichaje-row" style="cursor:pointer" onclick="abrirEditarComentario('${f.ID}','${f.Tipo}','${f.Hora}','${(f.Comentario||'').replace(/'/g,"\\'")}')">
           <span class="fichaje-tipo-dot">${f.Tipo==='ENTRADA'?'🟢':'🔴'}</span>
           <span class="fichaje-hora">${f.Hora}</span>
           <span class="fichaje-tipo">${f.Tipo}</span>
           <span class="fichaje-ubi">${f.Ubicacion_Nombre||''}</span>
-          ${f.Comentario?`<span class="fichaje-nota">💬 ${f.Comentario}</span>`:''}
+          ${f.Comentario?`<span class="fichaje-nota">💬 ${f.Comentario}</span>`:'<span class="fichaje-nota" style="opacity:.4">Añadir comentario…</span>'}
         </div>`).join('');
       return `<div class="dia-card">
         <div class="dia-header">
@@ -1395,6 +1396,45 @@ async function guardarAusenciaModal(fecha) {
       cargarDashboard();
     }
   } catch(err) { toast('❌ ' + err.message, 'error'); }
+}
+
+
+// ── EDITAR COMENTARIO FICHAJE ─────────────────────────────────────
+function abrirEditarComentario(id, tipo, hora, comentario) {
+  document.getElementById('modal-comentario-fichaje')?.remove();
+  const emoji = tipo === 'ENTRADA' ? '🟢' : '🔴';
+  const html = `<div class="modal-overlay" id="modal-comentario-fichaje" style="display:flex">
+    <div class="modal-card">
+      <h3>Comentario de fichaje</h3>
+      <div class="admin-card-sub" style="margin-bottom:12px">${emoji} ${tipo} — ${hora}</div>
+      <input type="hidden" id="comentario-fichaje-id" value="${id}"/>
+      <label class="field-label">Comentario</label>
+      <textarea id="comentario-fichaje-texto" rows="3" class="textarea-field"
+        placeholder="Añade una nota…">${comentario || ''}</textarea>
+      <div class="modal-btns mt">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-comentario-fichaje').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarComentarioFichaje()">Guardar</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(() => document.getElementById('comentario-fichaje-texto')?.focus(), 100);
+}
+
+async function guardarComentarioFichaje() {
+  const id         = document.getElementById('comentario-fichaje-id')?.value;
+  const comentario = document.getElementById('comentario-fichaje-texto')?.value?.trim() || '';
+  const btn = document.querySelector('#modal-comentario-fichaje .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+  try {
+    await api('actualizarComentario', { id, comentario });
+    toast('✅ Comentario guardado', 'ok');
+    document.getElementById('modal-comentario-fichaje')?.remove();
+    cargarMisFichajes(); // refrescar lista
+  } catch(err) {
+    toast('❌ ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+  }
 }
 
 // ── EXPORTAR FICHAJES ─────────────────────────────────────────────
