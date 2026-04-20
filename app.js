@@ -1273,18 +1273,49 @@ async function cargarIncidencias() {
 }
 
 function accionIncidencia(id, tipo, fecha, numEmp) {
+  state._incidenciaActiva = { id, numEmp, fecha };
   if (tipo === 'AUSENCIA') {
-    // Abrir modal de ausencia para ese día
-    abrirModalDia(fecha, 0, false);
-    // Pre-rellenar numEmp si admin
-    state._incidenciaActiva = { id, numEmp };
+    abrirOpcionesAusencia(id, tipo, fecha, numEmp);
   } else if (tipo === 'FICHAJES_IMPARES') {
-    // Abrir fichaje manual para ese día
     abrirFichajeManualDia(fecha);
-    state._incidenciaActiva = { id, numEmp };
   } else {
     resolverIncidencia(id);
   }
+}
+
+function abrirOpcionesAusencia(id, tipo, fecha, numEmp) {
+  document.getElementById('modal-opciones-ausencia')?.remove();
+  const fechaFmt = new Date(fecha + 'T12:00:00').toLocaleDateString('es-ES',
+    {weekday:'long', day:'numeric', month:'long'});
+
+  // Buscar nombre del empleado
+  const emp = (state.empleados || []).find(e => e.Numero_Empleado === numEmp);
+  const nombre = emp?.Nombre_Completo || '';
+
+  // Guardar datos en state para usarlos desde los botones
+  state._opcionesAusencia = { fecha, nombre, numEmp };
+
+  const html = `<div class="modal-overlay" id="modal-opciones-ausencia" style="display:flex">
+    <div class="modal-card">
+      <h3>⚠️ Resolver Ausencia</h3>
+      <div class="admin-card-sub" style="margin-bottom:4px">${fechaFmt}</div>
+      <div class="admin-card-sub" style="margin-bottom:16px">${nombre}</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px">¿Cómo resuelves esta ausencia?</p>
+      <button class="btn btn-ghost" style="width:100%;margin-bottom:8px;text-align:left"
+        onclick="cerrarOpcionesAusencia();abrirFichajeManualDia(state._opcionesAusencia.fecha)">➕ Añadir fichaje olvidado</button>
+      <button class="btn btn-ghost" style="width:100%;margin-bottom:8px;text-align:left"
+        onclick="cerrarOpcionesAusencia();abrirModalDia(state._opcionesAusencia.fecha,0,false,true,false)">💬 Justificar ausencia</button>
+      <button class="btn btn-ghost" style="width:100%;margin-bottom:16px;text-align:left"
+        onclick="cerrarOpcionesAusencia();abrirAusenciaRemun(state._opcionesAusencia.nombre,state._opcionesAusencia.numEmp)">🏥 Ausencia remunerada</button>
+      <button class="btn btn-ghost" style="width:100%" onclick="cerrarOpcionesAusencia()">Cancelar</button>
+    </div>
+  </div>`;
+
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function cerrarOpcionesAusencia() {
+  document.getElementById('modal-opciones-ausencia')?.remove();
 }
 
 async function resolverIncidencia(id) {
