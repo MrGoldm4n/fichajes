@@ -28,7 +28,7 @@ async function api(action, data = {}) {
   const emailGoogle = state.empleado?.emailGoogle || '';
   const isWrite = ['fichar','corregirFichaje','guardarEmpleado','guardarUbicacion',
                    'resolverIncidencia','guardarConfig','loginGoogle','guardarAusencia',
-                   'actualizarComentario'].includes(action);
+                   'actualizarComentario','guardarAusenciaRemun'].includes(action);
   const payload = { action, telegramId, emailGoogle, ...data };
   let res;
   if (isWrite) {
@@ -1030,6 +1030,7 @@ async function cargarEmpleados() {
         </div>
         <div class="emp-acciones">
           <button class="btn btn-sm btn-ghost" title="Vacaciones" onclick="abrirVacaciones('${emp.ID_Empleado}','${emp.Nombre_Completo}','${emp.Numero_Empleado}')">🏖️</button>
+          <button class="btn btn-sm btn-ghost" title="Ausencia remunerada" onclick="abrirAusenciaRemun('${emp.Nombre_Completo}','${emp.Numero_Empleado}')">🏥</button>
           <button class="btn btn-sm btn-ghost" title="Exportar fichajes" onclick="abrirExportar('${emp.ID_Empleado}','${emp.Nombre_Completo}','${emp.Numero_Empleado}')">📥</button>
           <button class="btn btn-sm btn-ghost" title="Editar" onclick="editarEmpleado('${emp.ID_Empleado}')">✏️</button>
           <button class="btn btn-sm ${activo?'btn-ghost':'btn-primary'}" title="${activo?'Desactivar':'Activar'}"
@@ -1511,6 +1512,96 @@ async function guardarVacaciones() {
 
     toast('✅ ' + dias.length + ' días de vacaciones registrados', 'ok');
     document.getElementById('modal-vacaciones')?.remove();
+  } catch(err) {
+    toast('❌ ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+  }
+}
+
+
+// ── AUSENCIA REMUNERADA ───────────────────────────────────────────
+function abrirAusenciaRemun(nombre, numero) {
+  document.getElementById('modal-remun')?.remove();
+  const hoy = fechaHoy();
+  const jornadaBase = parseFloat(state.empleado?.Jornada_Base_Dia) > 0
+    ? parseFloat(state.empleado.Jornada_Base_Dia) : 6.5;
+
+  const html = '<div class="modal-overlay" id="modal-remun" style="display:flex">' +
+    '<div class="modal-card">' +
+    '<h3>🏥 Ausencia Remunerada</h3>' +
+    '<div class="admin-card-sub" style="margin-bottom:12px">' + nombre + '</div>' +
+    '<input type="hidden" id="remun-numero" value="' + numero + '"/>' +
+    '<input type="hidden" id="remun-nombre" value="' + nombre + '"/>' +
+    '<label class="field-label">Tipo</label>' +
+    '<select id="remun-tipo" class="select-field">' +
+    '<option value="Baja laboral">🤒 Baja laboral</option>' +
+    '<option value="Permiso retribuido">📋 Permiso retribuido</option>' +
+    '<option value="Maternidad/Paternidad">👶 Maternidad/Paternidad</option>' +
+    '<option value="Permiso médico">🏥 Permiso médico</option>' +
+    '<option value="Otro">✏️ Otro</option>' +
+    '</select>' +
+    '<label class="field-label mt">Fecha inicio</label>' +
+    '<input type="date" id="remun-inicio" class="select-field" value="' + hoy + '"/>' +
+    '<label class="field-label mt">Fecha fin</label>' +
+    '<input type="date" id="remun-fin" class="select-field" value="' + hoy + '"/>' +
+    '<label class="field-label mt">Horas base por día</label>' +
+    '<input type="number" id="remun-horas-base" class="select-field" value="' + jornadaBase + '" step="0.5" min="0"/>' +
+    '<label class="field-label mt">Horas bolsa por día (opcional)</label>' +
+    '<input type="number" id="remun-horas-bolsa" class="select-field" value="0" step="0.5" min="0"/>' +
+    '<div class="admin-card-sub" style="margin-top:8px;font-size:11px" id="remun-resumen"></div>' +
+    '<div class="modal-btns mt">' +
+    '<button class="btn btn-ghost" onclick="cerrarModalRemun()">Cancelar</button>' +
+    '<button class="btn btn-primary" onclick="guardarAusenciaRemun()">Guardar</button>' +
+    '</div></div></div>';
+
+  document.body.insertAdjacentHTML('beforeend', html);
+
+  // Actualizar resumen en tiempo real
+  function actualizarResumen() {
+    const ini = document.getElementById('remun-inicio')?.value;
+    const fin = document.getElementById('remun-fin')?.value;
+    const hBase  = parseFloat(document.getElementById('remun-horas-base')?.value  || 0);
+    const hBolsa = parseFloat(document.getElementById('remun-horas-bolsa')?.value || 0);
+    if (!ini || !fin || ini > fin) return;
+    const dias = Math.round((new Date(fin+'T12:00:00') - new Date(ini+'T12:00:00')) / 86400000) + 1;
+    const total = parseFloat((dias * (hBase + hBolsa)).toFixed(1));
+    const el = document.getElementById('remun-resumen');
+    if (el) el.textContent = dias + ' días × ' + (hBase+hBolsa) + 'h = ' + total + 'h que se sumarán al total';
+  }
+  ['remun-inicio','remun-fin','remun-horas-base','remun-horas-bolsa'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', actualizarResumen);
+  });
+  actualizarResumen();
+}
+
+function cerrarModalRemun() { document.getElementById('modal-remun')?.remove(); }
+
+async function guardarAusenciaRemun() {
+  const numero   = document.getElementById('remun-numero')?.value;
+  const nombre   = document.getElementById('remun-nombre')?.value;
+  const tipo     = document.getElementById('remun-tipo')?.value;
+  const inicio   = document.getElementById('remun-inicio')?.value;
+  const fin      = document.getElementById('remun-fin')?.value;
+  const hBase    = parseFloat(document.getElementById('remun-horas-base')?.value  || 6.5);
+  const hBolsa   = parseFloat(document.getElementById('remun-horas-bolsa')?.value || 0);
+
+  if (!inicio || !fin) { toast('Indica fechas de inicio y fin', 'error'); return; }
+  if (inicio > fin)    { toast('La fecha inicio debe ser anterior al fin', 'error'); return; }
+
+  const btn = document.querySelector('#modal-remun .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+
+  try {
+    await api('guardarAusenciaRemun', {
+      numEmp: numero, nombreEmp: nombre,
+      tipo, fechaInicio: inicio, fechaFin: fin,
+      horasBase: hBase, horasBolsa: hBolsa
+    });
+
+    const dias = Math.round((new Date(fin+'T12:00:00') - new Date(inicio+'T12:00:00')) / 86400000) + 1;
+    const total = parseFloat((dias * (hBase + hBolsa)).toFixed(1));
+    toast('✅ ' + total + 'h añadidas (' + dias + ' días de ' + tipo + ')', 'ok');
+    document.getElementById('modal-remun')?.remove();
   } catch(err) {
     toast('❌ ' + err.message, 'error');
     if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
