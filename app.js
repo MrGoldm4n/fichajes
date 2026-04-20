@@ -1029,7 +1029,7 @@ async function cargarEmpleados() {
           </div>
         </div>
         <div class="emp-acciones">
-          <button class="btn btn-sm btn-ghost" title="Ver fichajes" onclick="verFichajesEmpleado('${emp.ID_Empleado}','${emp.Nombre_Completo}')">📋</button>
+          <button class="btn btn-sm btn-ghost" title="Vacaciones" onclick="abrirVacaciones('${emp.ID_Empleado}','${emp.Nombre_Completo}','${emp.Numero_Empleado}')">🏖️</button>
           <button class="btn btn-sm btn-ghost" title="Exportar fichajes" onclick="abrirExportar('${emp.ID_Empleado}','${emp.Nombre_Completo}','${emp.Numero_Empleado}')">📥</button>
           <button class="btn btn-sm btn-ghost" title="Editar" onclick="editarEmpleado('${emp.ID_Empleado}')">✏️</button>
           <button class="btn btn-sm ${activo?'btn-ghost':'btn-primary'}" title="${activo?'Desactivar':'Activar'}"
@@ -1431,6 +1431,86 @@ async function guardarComentarioFichaje() {
     toast('✅ Comentario guardado', 'ok');
     document.getElementById('modal-comentario-fichaje')?.remove();
     cargarMisFichajes(); // refrescar lista
+  } catch(err) {
+    toast('❌ ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+  }
+}
+
+
+// ── VACACIONES ────────────────────────────────────────────────────
+function abrirVacaciones(id, nombre, numero) {
+  document.getElementById('modal-vacaciones')?.remove();
+  const hoy = fechaHoy();
+  const html = `<div class="modal-overlay" id="modal-vacaciones" style="display:flex">
+    <div class="modal-card">
+      <h3>🏖️ Registrar Vacaciones</h3>
+      <div class="admin-card-sub" style="margin-bottom:12px">${nombre}</div>
+      <input type="hidden" id="vac-numero" value="${numero}"/>
+      <input type="hidden" id="vac-nombre" value="${nombre}"/>
+      <label class="field-label">Tipo</label>
+      <select id="vac-tipo" class="select-field">
+        <option value="Vacaciones Verano">☀️ Vacaciones Verano</option>
+        <option value="Vacaciones Invierno">❄️ Vacaciones Invierno</option>
+        <option value="Vacaciones">🏖️ Vacaciones</option>
+        <option value="Otro">✏️ Otro (escribir abajo)</option>
+      </select>
+      <div id="vac-otro-wrap" class="hidden">
+        <label class="field-label mt">Comentario personalizado</label>
+        <input type="text" id="vac-otro-texto" class="select-field" placeholder="Ej: Permiso especial..."/>
+      </div>
+      <label class="field-label mt">Fecha inicio</label>
+      <input type="date" id="vac-inicio" class="select-field" value="${hoy}"/>
+      <label class="field-label mt">Fecha fin</label>
+      <input type="date" id="vac-fin" class="select-field" value="${hoy}"/>
+      <div class="modal-btns mt">
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-vacaciones').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarVacaciones()">Guardar</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  // Mostrar campo personalizado si selecciona Otro
+  document.getElementById('vac-tipo').onchange = function() {
+    const wrap = document.getElementById('vac-otro-wrap');
+    if (wrap) this.value === 'Otro' ? wrap.classList.remove('hidden') : wrap.classList.add('hidden');
+  };
+}
+
+async function guardarVacaciones() {
+  const numero  = document.getElementById('vac-numero')?.value;
+  const nombre  = document.getElementById('vac-nombre')?.value;
+  const tipo    = document.getElementById('vac-tipo')?.value;
+  const custom  = document.getElementById('vac-otro-texto')?.value?.trim();
+  const comentario = tipo === 'Otro' ? (custom || 'Vacaciones') : tipo;
+  const inicio  = document.getElementById('vac-inicio')?.value;
+  const fin     = document.getElementById('vac-fin')?.value;
+
+  if (!inicio || !fin) { toast('Indica fechas de inicio y fin', 'error'); return; }
+  if (inicio > fin) { toast('La fecha de inicio debe ser anterior al fin', 'error'); return; }
+
+  const btn = document.querySelector('#modal-vacaciones .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+
+  try {
+    // Generar una entrada por cada día del rango
+    const dias = [];
+    let cur = new Date(inicio + 'T12:00:00');
+    const fechaFin = new Date(fin + 'T12:00:00');
+    while (cur <= fechaFin) {
+      dias.push(cur.getFullYear() + '-' +
+        String(cur.getMonth()+1).padStart(2,'0') + '-' +
+        String(cur.getDate()).padStart(2,'0'));
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    // Guardar todas las ausencias en paralelo
+    await Promise.all(dias.map(fecha =>
+      api('guardarAusencia', { fecha, comentario, numEmp: numero, nombreEmp: nombre })
+    ));
+
+    toast('✅ ' + dias.length + ' días de vacaciones registrados', 'ok');
+    document.getElementById('modal-vacaciones')?.remove();
   } catch(err) {
     toast('❌ ' + err.message, 'error');
     if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
