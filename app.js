@@ -1404,23 +1404,30 @@ async function guardarAusenciaModal(fecha) {
   const comentario = document.getElementById('dia-comentario')?.value?.trim();
   if (!comentario) { toast('Añade un comentario para la ausencia', 'error'); return; }
   try {
-    // Usar el empleado seleccionado en el dashboard, no el admin
+    // Prioridad: empleado de la incidencia > selector dashboard > empleado logado
+    const numEmpOpciones = state._opcionesAusencia?.numEmp;
     const selDash = document.getElementById('dash-emp-select');
-    const numEmpTarget = selDash?.value || state.empleado.Numero_Empleado;
+    const numEmpTarget = numEmpOpciones || selDash?.value || state.empleado.Numero_Empleado;
     const empTarget = (state.empleados || []).find(e => e.Numero_Empleado === numEmpTarget);
-    const nombreTarget = empTarget?.Nombre_Completo || state.empleado.Nombre_Completo;
-    await api('guardarAusencia', { fecha, comentario,
-      numEmp: numEmpTarget,
-      nombreEmp: nombreTarget
-    });
+    const nombreTarget = empTarget?.Nombre_Completo || state._opcionesAusencia?.nombre || state.empleado.Nombre_Completo;
+
+    await api('guardarAusencia', { fecha, comentario, numEmp: numEmpTarget, nombreEmp: nombreTarget });
+
+    // Si venía de una incidencia, resolverla automáticamente
+    if (state._incidenciaActiva?.id) {
+      await api('resolverIncidencia', { id: state._incidenciaActiva.id }).catch(() => {});
+      state._incidenciaActiva = null;
+      state._opcionesAusencia = null;
+      await cargarIncidencias();
+    }
+
     toast('✅ Ausencia guardada', 'ok');
     document.getElementById('modal-dia')?.remove();
-    // Refrescar ausencias y redibujar calendario sin recargar todo el dashboard
-    const selDashRefresh = document.getElementById('dash-emp-select');
-    const numEmpRefresh = selDashRefresh?.value || '';
+
+    // Refrescar ausencias y calendario
+    const numEmpRefresh = selDash?.value || numEmpTarget;
     const ausenciasNew = await api('getAusencias', numEmpRefresh ? { numEmp: numEmpRefresh } : {}).catch(() => []);
     state._ausencias = ausenciasNew;
-    // Redibujar solo el calendario con los datos actuales
     const mesInput = document.getElementById('dash-mes');
     if (mesInput && window._lastResumenDias) {
       renderCalendario(window._lastResumenDias, mesInput.value, ausenciasNew);
