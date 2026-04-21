@@ -941,11 +941,14 @@ function renderCalendario(detalleDias, mesStr, ausencias) {
     // Todos los días anteriores son clickeables (incluye días con ausencia ya puesta para editar)
     const esSinFichajesModal = mins === 0 && esAnterior;
     const tieneAusenciaJustificada = ausenciasPorDia.hasOwnProperty(fechaStr);
-    const clickable = esAnterior
+    // Días futuros con ausencia también son clickeables para editar
+    const esFuturoConAusencia = !esAnterior && !esHoy(d) && tieneAusenciaJustificada;
+    const esClickable = esAnterior || esFuturoConAusencia;
+    const clickable = esClickable
       ? `onclick="abrirModalDia('${fechaStr}', ${mins}, ${esIncompletoDia}, ${esSinFichajesModal}, ${tieneAusenciaJustificada})"`
       : '';
 
-    return `<div class="${clase}" style="${estilo}cursor:${esAnterior ?'pointer':'default'}" ${clickable}>
+    return `<div class="${clase}" style="${estilo}cursor:${esClickable ?'pointer':'default'}" ${clickable}>
       <span class="cal-num">${d}</span>${dots}${textoExtra}</div>`;
   }).join('');
 
