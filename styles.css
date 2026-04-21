@@ -504,3 +504,7 @@ body {
 }
 .cal-day[style*="pointer"] { transition: opacity .15s; }
 .cal-day[style*="pointer"]:hover { opacity: .8; }
+
+/* ── BTN DANGER ─────────────────────────────────────────────────── */
+.btn-danger { background: #e74c3c; color: #fff; }
+.btn-danger:hover { background: #c0392b; }
