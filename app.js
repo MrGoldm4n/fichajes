@@ -908,20 +908,17 @@ function renderCalendario(detalleDias, mesStr, ausencias) {
     let estilo = '';
     let textoExtra = '';
 
-    if (!esHoy(d) && esAnterior) {
+    if (ausenciasPorDia.hasOwnProperty(fechaStr) && !esHoy(d)) {
+      // Ausencia registrada en cualquier día (pasado o futuro) → gris con texto
+      estilo = 'border: 2px solid #555; opacity:0.75;';
+      textoExtra = '<div class="cal-ausencia">' + (ausenciasPorDia[fechaStr] || 'Ausencia') + '</div>';
+    } else if (!esHoy(d) && esAnterior) {
       if (mins > 0 && mins < minsBase) {
         // Jornada incompleta → rojo
         estilo = 'border: 2px solid #e74c3c;';
-      } else if (mins === 0) {
-        if (ausenciasPorDia.hasOwnProperty(fechaStr)) {
-          // Ausencia justificada (cualquier día, incluido domingo) → gris con texto
-          estilo = 'border: 2px solid #555; opacity:0.75;';
-          textoExtra = `<div class="cal-ausencia">${ausenciasPorDia[fechaStr] || 'Ausencia'}</div>`;
-        } else if (diaSemana !== 0) {
-          // Sin justificar y día laborable (lun-sab) → naranja
-          estilo = 'border: 2px solid #f39c12;';
-        }
-        // Domingo sin ausencia → sin color (descanso normal)
+      } else if (mins === 0 && diaSemana !== 0) {
+        // Sin justificar y día laborable (lun-sab) → naranja
+        estilo = 'border: 2px solid #f39c12;';
       }
     }
 
