@@ -28,7 +28,7 @@ async function api(action, data = {}) {
   const emailGoogle = state.empleado?.emailGoogle || '';
   const isWrite = ['fichar','corregirFichaje','guardarEmpleado','guardarUbicacion',
                    'resolverIncidencia','guardarConfig','loginGoogle','guardarAusencia',
-                   'actualizarComentario','guardarAusenciaRemun'].includes(action);
+                   'actualizarComentario','guardarAusenciaRemun','borrarGrupoAusencias'].includes(action);
   const payload = { action, telegramId, emailGoogle, ...data };
   let res;
   if (isWrite) {
@@ -1330,9 +1330,15 @@ async function resolverIncidencia(id) {
 function abrirModalDia(fecha, mins, esIncompleto, esSinFichajes, tieneAusencia) {
   document.getElementById('modal-dia')?.remove();
   const ausencia = (state._ausencias || []).find(a => (a.Fecha||'').slice(0,10) === fecha);
-  // Si tiene ausencia justificada, mostrar modal de edición
+
+  // Si tiene ausencia con ID_Grupo → abrir modal de edición de rango
+  if (tieneAusencia && ausencia?.ID_Grupo) {
+    abrirEditarRangoAusencia(ausencia);
+    return;
+  }
+  // Si tiene ausencia sin grupo → forzar modal con campo comentario para editar
   if (tieneAusencia && !esIncompleto && !esSinFichajes) {
-    esSinFichajes = true; // forzar modal con campo comentario para editar
+    esSinFichajes = true;
   }
   const fechaFmt = new Date(fecha + 'T12:00:00').toLocaleDateString('es-ES', {weekday:'long', day:'numeric', month:'long'});
 
@@ -1540,9 +1546,11 @@ async function guardarVacaciones() {
       cur.setDate(cur.getDate() + 1);
     }
 
-    // Guardar todas las ausencias en paralelo
+    // Generar ID de grupo para este rango
+    const idGrupo = 'GRP-' + Date.now();
+    // Guardar todas las ausencias en paralelo con el mismo ID_Grupo
     await Promise.all(dias.map(fecha =>
-      api('guardarAusencia', { fecha, comentario, numEmp: numero, nombreEmp: nombre })
+      api('guardarAusencia', { fecha, comentario, numEmp: numero, nombreEmp: nombre, idGrupo })
     ));
 
     toast('✅ ' + dias.length + ' días de vacaciones registrados', 'ok');
@@ -1641,6 +1649,117 @@ async function guardarAusenciaRemun() {
     toast('❌ ' + err.message, 'error');
     if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
   }
+}
+
+
+// ── EDITAR / BORRAR RANGO DE AUSENCIAS ───────────────────────────
+function abrirEditarRangoAusencia(ausencia) {
+  document.getElementById('modal-editar-rango')?.remove();
+  const idGrupo   = ausencia.ID_Grupo;
+  const numEmp    = ausencia.Numero_Empleado;
+  const comentario = ausencia.Comentario || '';
+
+  // Detectar todo el rango del grupo
+  const diasGrupo = (state._ausencias || [])
+    .filter(a => a.ID_Grupo === idGrupo)
+    .map(a => (a.Fecha||'').slice(0,10))
+    .sort();
+  const fechaIni = diasGrupo[0] || '';
+  const fechaFin = diasGrupo[diasGrupo.length-1] || '';
+  const fmtIni = fechaIni ? new Date(fechaIni+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'long'}) : '';
+  const fmtFin = fechaFin ? new Date(fechaFin+'T12:00:00').toLocaleDateString('es-ES',{day:'numeric',month:'long'}) : '';
+
+  const html = `<div class="modal-overlay" id="modal-editar-rango" style="display:flex">
+    <div class="modal-card">
+      <h3>✏️ Editar rango de ausencia</h3>
+      <div class="admin-card-sub" style="margin-bottom:12px">${fmtIni} — ${fmtFin} (${diasGrupo.length} días)</div>
+      <input type="hidden" id="editar-rango-idgrupo" value="${idGrupo}"/>
+      <input type="hidden" id="editar-rango-numemp" value="${numEmp}"/>
+      <label class="field-label">Tipo / Comentario</label>
+      <select id="editar-rango-tipo" class="select-field" onchange="toggleEditarRangoOtro(this.value)">
+        <option value="Vacaciones Verano" ${comentario==='Vacaciones Verano'?'selected':''}>☀️ Vacaciones Verano</option>
+        <option value="Vacaciones Invierno" ${comentario==='Vacaciones Invierno'?'selected':''}>❄️ Vacaciones Invierno</option>
+        <option value="Vacaciones" ${comentario==='Vacaciones'?'selected':''}>🏖️ Vacaciones</option>
+        <option value="Descanso S." ${comentario==='Descanso S.'?'selected':''}>💤 Descanso Semanal</option>
+        <option value="Festivo" ${comentario==='Festivo'?'selected':''}>🎉 Festivo</option>
+        <option value="__otro__" ${!['Vacaciones Verano','Vacaciones Invierno','Vacaciones','Descanso S.','Festivo'].includes(comentario)?'selected':''}>✏️ Otro</option>
+      </select>
+      <div id="editar-rango-otro-wrap" class="${!['Vacaciones Verano','Vacaciones Invierno','Vacaciones','Descanso S.','Festivo'].includes(comentario)?'':'hidden'}">
+        <label class="field-label mt">Comentario personalizado</label>
+        <input type="text" id="editar-rango-otro" class="select-field" value="${!['Vacaciones Verano','Vacaciones Invierno','Vacaciones','Descanso S.','Festivo'].includes(comentario)?comentario:''}"/>
+      </div>
+      <label class="field-label mt">Nueva fecha inicio</label>
+      <input type="date" id="editar-rango-inicio" class="select-field" value="${fechaIni}"/>
+      <label class="field-label mt">Nueva fecha fin</label>
+      <input type="date" id="editar-rango-fin" class="select-field" value="${fechaFin}"/>
+      <div class="modal-btns mt" style="flex-direction:column;gap:8px">
+        <button class="btn btn-primary" onclick="guardarRangoAusencia()">💾 Guardar cambios</button>
+        <button class="btn btn-danger" onclick="confirmarBorrarRango()">🗑️ Borrar rango completo</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-editar-rango').remove()">Cancelar</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function toggleEditarRangoOtro(val) {
+  const wrap = document.getElementById('editar-rango-otro-wrap');
+  if (wrap) val === '__otro__' ? wrap.classList.remove('hidden') : wrap.classList.add('hidden');
+}
+
+async function guardarRangoAusencia() {
+  const idGrupo = document.getElementById('editar-rango-idgrupo')?.value;
+  const numEmp  = document.getElementById('editar-rango-numemp')?.value;
+  const tipo    = document.getElementById('editar-rango-tipo')?.value;
+  const otro    = document.getElementById('editar-rango-otro')?.value?.trim();
+  const comentario = tipo === '__otro__' ? (otro || 'Ausencia') : tipo;
+  const inicio  = document.getElementById('editar-rango-inicio')?.value;
+  const fin     = document.getElementById('editar-rango-fin')?.value;
+
+  if (!inicio || !fin || inicio > fin) { toast('Fechas incorrectas', 'error'); return; }
+
+  const btn = document.querySelector('#modal-editar-rango .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+
+  try {
+    // Borrar rango anterior y crear nuevo
+    await api('borrarGrupoAusencias', { idGrupo, numEmp });
+
+    const dias = [];
+    let cur = new Date(inicio + 'T12:00:00');
+    const fechaFin = new Date(fin + 'T12:00:00');
+    while (cur <= fechaFin) {
+      dias.push(cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0') + '-' + String(cur.getDate()).padStart(2,'0'));
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    // Buscar nombre del empleado
+    const empObj = (state.empleados || []).find(e => e.Numero_Empleado === numEmp);
+    const nombre = empObj?.Nombre_Completo || '';
+
+    await Promise.all(dias.map(fecha =>
+      api('guardarAusencia', { fecha, comentario, numEmp, nombreEmp: nombre, idGrupo })
+    ));
+
+    toast('✅ Rango actualizado — ' + dias.length + ' días', 'ok');
+    document.getElementById('modal-editar-rango')?.remove();
+    cargarDashboard();
+  } catch(err) {
+    toast('❌ ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Guardar cambios'; }
+  }
+}
+
+async function confirmarBorrarRango() {
+  if (!confirm('¿Borrar todo el rango de ausencias?')) return;
+  const idGrupo = document.getElementById('editar-rango-idgrupo')?.value;
+  const numEmp  = document.getElementById('editar-rango-numemp')?.value;
+  try {
+    const r = await api('borrarGrupoAusencias', { idGrupo, numEmp });
+    toast('✅ ' + (r.deleted || 0) + ' días eliminados', 'ok');
+    document.getElementById('modal-editar-rango')?.remove();
+    cargarDashboard();
+  } catch(err) { toast('❌ ' + err.message, 'error'); }
 }
 
 // ── EXPORTAR FICHAJES ─────────────────────────────────────────────
