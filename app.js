@@ -758,20 +758,12 @@ async function cargarDashboard() {
 
     // Semana y bolsa de horas
     if (resumen.semana) renderSemana(resumen.semana, ausencias);
-    // Card picos
-    renderCardPicos(resumen.bolsaNeta, resumen.detalleDias || [], jornadaBaseH);
 
-    // Bolsa de horas anual
-    const bolsaAnual = parseFloat(state.empleado?.Bolsa_Anual) > 0
-      ? parseFloat(state.empleado.Bolsa_Anual) : 0;
-    const bolsaReal = parseFloat(resumen.horasRealizadas || 0) -
-      Math.min(parseFloat(resumen.horasRealizadas || 0),
-               parseFloat(state.empleado?.Jornada_Base_Dia || 6.5) * 365 / 12 * 12);
-    // Calcular bolsa real desde detalleDias
-    let minsJornadaTotal = 0;
-    let minsTotalReal = 0;
+    // Calcular bolsa y picos — jornadaBaseH debe estar declarada antes de usarse
     const jornadaBaseH = parseFloat(state.empleado?.Jornada_Base_Dia) > 0
       ? parseFloat(state.empleado.Jornada_Base_Dia) : 6.5;
+    let minsJornadaTotal = 0;
+    let minsTotalReal = 0;
     (resumen.detalleDias || []).forEach(d => {
       const mins = d.minutos || 0;
       minsTotalReal += mins;
@@ -779,7 +771,15 @@ async function cargarDashboard() {
     });
     const minsBolsaReal = Math.max(0, minsTotalReal - minsJornadaTotal);
     const horasBolsaReal = parseFloat((minsBolsaReal / 60).toFixed(1));
+
+    // Velocímetro bolsa anual
+    const bolsaAnual = parseFloat(state.empleado?.Bolsa_Anual) > 0
+      ? parseFloat(state.empleado.Bolsa_Anual) : 0;
     renderBolsaGauge(horasBolsaReal, bolsaAnual);
+
+    // Card picos
+    renderCardPicos(resumen.bolsaNeta, resumen.detalleDias || [], jornadaBaseH);
+
   } catch(err) { console.error('Dashboard:', err); }
 }
 
