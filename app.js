@@ -758,6 +758,8 @@ async function cargarDashboard() {
 
     // Semana y bolsa de horas
     if (resumen.semana) renderSemana(resumen.semana, ausencias);
+    // Card picos
+    renderCardPicos(resumen.bolsaNeta, resumen.detalleDias || [], jornadaBaseH);
 
     // Bolsa de horas anual
     const bolsaAnual = parseFloat(state.empleado?.Bolsa_Anual) > 0
@@ -1564,6 +1566,64 @@ async function guardarVacaciones() {
   }
 }
 
+
+
+// ── CARD PICOS ────────────────────────────────────────────────────
+function renderCardPicos(bolsaNeta, detalleDias, jornadaBase) {
+  const cont = document.getElementById('card-picos'); if (!cont) return;
+  jornadaBase = jornadaBase || 6.5;
+  const minsBase = jornadaBase * 60;
+
+  // Calcular bolsa semanal y mensual
+  const hoy = new Date();
+  const diaActual = hoy.getDay();
+  const diasHastaLunes = diaActual === 0 ? 6 : diaActual - 1;
+  const lunesStr = (() => {
+    const l = new Date(hoy); l.setDate(hoy.getDate() - diasHastaLunes);
+    return l.getFullYear() + '-' + String(l.getMonth()+1).padStart(2,'0') + '-' + String(l.getDate()).padStart(2,'0');
+  })();
+  const mesStr = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0');
+
+  let minsBolsaSemana = 0, minsBolsaMes = 0;
+  detalleDias.forEach(d => {
+    if (!d.fecha) return;
+    const mins = d.minutos || 0;
+    const bolsa = mins - minsBase; // puede ser negativo
+    if (d.fecha >= lunesStr) minsBolsaSemana += bolsa;
+    if (d.fecha.startsWith(mesStr)) minsBolsaMes += bolsa;
+  });
+
+  function formatBolsa(mins) {
+    const neg = mins < 0;
+    const abs = Math.abs(mins);
+    const h = Math.floor(abs / 60);
+    const m = abs % 60;
+    const str = h > 0 ? h + 'h' + (m > 0 ? ' ' + m + "'" : '') : m + "'";
+    return (neg ? '-' : '+') + str;
+  }
+
+  function picoCard(label, totalMins) {
+    const neg = totalMins < 0;
+    const abs = Math.abs(totalMins);
+    const horas = Math.floor(abs / 60);
+    const picos = abs % 60;
+    const color = neg ? '#e74c3c' : '#2ecc71';
+    const picoColor = '#f39c12';
+
+    return '<div class="pico-card">' +
+      '<div class="pico-label">' + label + '</div>' +
+      '<div class="pico-horas" style="color:' + color + '">' +
+        (neg ? '-' : '') + horas + 'h' +
+      '</div>' +
+      (picos > 0 ? '<div class="pico-minutos" style="color:' + picoColor + '">' + (neg?'-':'') + picos + "' picos</div>" : '') +
+      '</div>';
+  }
+
+  cont.innerHTML = '<div class="pico-cards-wrap">' +
+    picoCard('Esta semana', minsBolsaSemana) +
+    picoCard('Este mes', minsBolsaMes) +
+    '</div>';
+}
 
 // ── AUSENCIA REMUNERADA ───────────────────────────────────────────
 function abrirAusenciaRemun(nombre, numero) {
