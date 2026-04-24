@@ -910,16 +910,20 @@ function renderCalendario(detalleDias, mesStr, ausencias) {
     let estilo = '';
     let textoExtra = '';
 
-    if (ausenciasPorDia.hasOwnProperty(fechaStr) && !esHoy(d)) {
-      // Ausencia registrada en cualquier día (pasado o futuro) → gris con texto
+    if (!esHoy(d) && esAnterior && mins > 0 && mins < minsBase) {
+      // Jornada incompleta → rojo SIEMPRE, aunque tenga comentario
+      estilo = 'border: 2px solid #e74c3c;';
+      // Si además tiene comentario justificante, mostrarlo
+      if (ausenciasPorDia.hasOwnProperty(fechaStr)) {
+        textoExtra = '<div class="cal-ausencia" style="color:#e74c3c">' + (ausenciasPorDia[fechaStr] || '') + '</div>';
+      }
+    } else if (ausenciasPorDia.hasOwnProperty(fechaStr) && !esHoy(d)) {
+      // Ausencia registrada (pasado o futuro) → gris con texto
       estilo = 'border: 2px solid #555; opacity:0.75;';
       textoExtra = '<div class="cal-ausencia">' + (ausenciasPorDia[fechaStr] || 'Ausencia') + '</div>';
     } else if (!esHoy(d) && esAnterior) {
-      if (mins > 0 && mins < minsBase) {
-        // Jornada incompleta → rojo
-        estilo = 'border: 2px solid #e74c3c;';
-      } else if (mins === 0 && diaSemana !== 0) {
-        // Sin justificar y día laborable (lun-sab) → naranja
+      if (mins === 0 && diaSemana !== 0) {
+        // Sin fichajes, sin justificar y día laborable → naranja
         estilo = 'border: 2px solid #f39c12;';
       }
     }
