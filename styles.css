@@ -508,3 +508,15 @@ body {
 /* ── BTN DANGER ─────────────────────────────────────────────────── */
 .btn-danger { background: #e74c3c; color: #fff; }
 .btn-danger:hover { background: #c0392b; }
+
+/* ── PICOS CARD ──────────────────────────────────────────────────── */
+.pico-card-wrap { min-width: 130px; flex-shrink: 0; }
+.pico-cards-wrap { display: flex; gap: 16px; justify-content: space-around; }
+.pico-card { text-align: center; }
+.pico-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+.pico-horas { font-size: 28px; font-weight: 800; line-height: 1; }
+.pico-minutos { font-size: 18px; font-weight: 700; margin-top: 4px; }
+@media (max-width: 480px) {
+  .pico-card-wrap { width: 100%; }
+  .pico-cards-wrap { gap: 24px; }
+}
