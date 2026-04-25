@@ -613,6 +613,9 @@ async function enviarFichajeManual() {
       toast('✅ ' + res.tipo + ' manual registrada', 'ok');
       document.getElementById('modal-manual')?.classList.add('hidden');
       await refreshEstado();
+      // Refrescar dashboard si está activo
+      const dashActivo = document.getElementById('screen-dashboard')?.classList.contains('active');
+      if (dashActivo) cargarDashboard();
     }
   } catch (err) { toast('❌ ' + err.message, 'error'); }
 }
@@ -1413,8 +1416,8 @@ function abrirFichajeManualDia(fecha) {
 }
 
 async function guardarAusenciaModal(fecha) {
-  const comentario = document.getElementById('dia-comentario')?.value?.trim();
-  if (!comentario) { toast('Añade un comentario para la ausencia', 'error'); return; }
+  const comentario = document.getElementById('dia-comentario')?.value?.trim() || '';
+  // Comentario vacío = borrar la ausencia
   try {
     // Prioridad: empleado de la incidencia > selector dashboard > empleado logado
     const numEmpOpciones = state._opcionesAusencia?.numEmp;
@@ -1589,8 +1592,10 @@ function renderCardPicos(bolsaNeta, detalleDias, jornadaBase) {
   const mesStr = hoy.getFullYear() + '-' + String(hoy.getMonth()+1).padStart(2,'0');
 
   let minsBolsaSemana = 0, minsBolsaMes = 0;
+  const hoyStr = fechaHoy();
   detalleDias.forEach(d => {
     if (!d.fecha) return;
+    if (d.fecha >= hoyStr) return; // excluir hoy y días futuros
     const mins = d.minutos || 0;
     const bolsa = mins - minsBase; // puede ser negativo
     if (d.fecha >= lunesStr) minsBolsaSemana += bolsa;
