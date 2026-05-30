@@ -1265,11 +1265,11 @@ async function cargarIncidencias() {
   try {
     const data = await api('getIncidencias');
     if (!data.length) { lista.innerHTML='<div class="empty-state">Sin incidencias</div>'; return; }
-    // Pendientes primero, luego resueltas
-    const sorted = [...data].sort((a,b) => {
-      if (a.Estado === b.Estado) return (b.Fecha||'').localeCompare(a.Fecha||'');
-      return a.Estado === 'PENDIENTE' ? -1 : 1;
-    });
+    // Solo mostrar pendientes
+    const sorted = [...data]
+      .filter(inc => inc.Estado?.toUpperCase() !== 'RESUELTA')
+      .sort((a,b) => (b.Fecha||'').localeCompare(a.Fecha||''));
+    if (!sorted.length) { lista.innerHTML='<div class="empty-state">Sin incidencias pendientes</div>'; return; }
     lista.innerHTML = sorted.map(inc => {
       const resuelta = inc.Estado?.toUpperCase() === 'RESUELTA';
       return `<div class="admin-card ${resuelta?'inc-resuelta':''}">
