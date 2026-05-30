@@ -608,10 +608,15 @@ async function enviarFichajeManual() {
   const comentario = document.getElementById('manual-comentario')?.value?.trim() || '';
   if (!fecha || !hora) { toast('Indica fecha y hora', 'error'); return; }
   try {
-    const res = await api('fichar', { fecha, hora, comentario, ubicacionId:'', ubicacionNombre:'', metodo:'MANUAL' });
+    // Si admin está fichando por otro empleado, pasar su numEmp
+    const numEmpManual = state._fichajeManualNumEmp || null;
+    const payloadManual = { fecha, hora, comentario, ubicacionId:'', ubicacionNombre:'', metodo:'MANUAL' };
+    if (numEmpManual) payloadManual.numEmpTarget = numEmpManual;
+    const res = await api('fichar', payloadManual);
     if (res.ok) {
       toast('✅ ' + res.tipo + ' manual registrada', 'ok');
       document.getElementById('modal-manual')?.classList.add('hidden');
+      state._fichajeManualNumEmp = null;
       await refreshEstado();
       // Refrescar dashboard si está activo
       const dashActivo = document.getElementById('screen-dashboard')?.classList.contains('active');
@@ -1298,7 +1303,7 @@ function accionIncidencia(id, tipo, fecha, numEmp) {
   if (tipo === 'AUSENCIA') {
     abrirOpcionesAusencia(id, tipo, fecha, numEmp);
   } else if (tipo === 'FICHAJES_IMPARES') {
-    abrirFichajeManualDia(fecha);
+    abrirFichajeManualDia(fecha, numEmp);
   } else {
     resolverIncidencia(id);
   }
@@ -1324,7 +1329,7 @@ function abrirOpcionesAusencia(id, tipo, fecha, numEmp) {
       <div class="admin-card-sub" style="margin-bottom:16px">${nombre}</div>
       <p style="font-size:13px;color:var(--text2);margin-bottom:12px">¿Cómo resuelves esta ausencia?</p>
       <button class="btn btn-ghost" style="width:100%;margin-bottom:8px;text-align:left"
-        onclick="cerrarOpcionesAusencia();abrirFichajeManualDia(state._opcionesAusencia.fecha)">➕ Añadir fichaje olvidado</button>
+        onclick="cerrarOpcionesAusencia();abrirFichajeManualDia(state._opcionesAusencia.fecha, state._opcionesAusencia.numEmp)">➕ Añadir fichaje olvidado</button>
       <button class="btn btn-ghost" style="width:100%;margin-bottom:8px;text-align:left"
         onclick="cerrarOpcionesAusencia();abrirModalDia(state._opcionesAusencia.fecha,0,false,true,false)">💬 Justificar ausencia</button>
       <button class="btn btn-ghost" style="width:100%;margin-bottom:16px;text-align:left"
@@ -1420,11 +1425,13 @@ function abrirModalDia(fecha, mins, esIncompleto, esSinFichajes, tieneAusencia) 
   setTimeout(() => document.getElementById('dia-comentario')?.focus(), 100);
 }
 
-function abrirFichajeManualDia(fecha) {
+function abrirFichajeManualDia(fecha, numEmpTarget) {
   document.getElementById('modal-dia')?.remove();
   document.getElementById('manual-fecha').value = fecha;
   document.getElementById('manual-hora').value  = '';
   document.getElementById('manual-comentario').value = '';
+  // Guardar numEmp del empleado afectado (puede ser distinto al admin logado)
+  state._fichajeManualNumEmp = numEmpTarget || state._incidenciaActiva?.numEmp || null;
   document.getElementById('modal-manual')?.classList.remove('hidden');
 }
 
