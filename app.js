@@ -618,6 +618,12 @@ async function enviarFichajeManual() {
       document.getElementById('modal-manual')?.classList.add('hidden');
       state._fichajeManualNumEmp = null;
       await refreshEstado();
+      // Si venía de una incidencia, resolverla y refrescar lista
+      if (state._incidenciaActiva?.id) {
+        await api('resolverIncidencia', { id: state._incidenciaActiva.id }).catch(() => {});
+        state._incidenciaActiva = null;
+        cargarIncidencias();
+      }
       // Refrescar dashboard si está activo
       const dashActivo = document.getElementById('screen-dashboard')?.classList.contains('active');
       if (dashActivo) cargarDashboard();
