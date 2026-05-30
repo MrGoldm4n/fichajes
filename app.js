@@ -1289,6 +1289,11 @@ async function cargarIncidencias() {
 }
 
 function accionIncidencia(id, tipo, fecha, numEmp) {
+  // Normalizar fecha por si viene en formato largo del sheet
+  if (fecha && fecha.length > 10) {
+    const d = new Date(fecha);
+    if (!isNaN(d)) fecha = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
   state._incidenciaActiva = { id, numEmp, fecha };
   if (tipo === 'AUSENCIA') {
     abrirOpcionesAusencia(id, tipo, fecha, numEmp);
