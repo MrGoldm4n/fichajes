@@ -1086,6 +1086,7 @@ function abrirFormEmpleado(emp) {
   document.getElementById('emp-nombre').value      = emp?.Nombre_Completo   || '';
   document.getElementById('emp-numero').value      = emp?.Numero_Empleado   || '';
   document.getElementById('emp-email').value       = emp?.Email             || '';
+  document.getElementById('emp-email2').value      = emp?.Email2            || '';
   document.getElementById('emp-tgid').value        = emp?.Telegram_ID       || '';
   document.getElementById('emp-rol').value         = emp?.Rol?.toLowerCase() || 'empleado';
   document.getElementById('emp-notif').value       = emp?.Notificaciones?.toLowerCase() || 'privado';
@@ -1094,6 +1095,7 @@ function abrirFormEmpleado(emp) {
   document.getElementById('emp-jornada-base').value= (emp?.Jornada_Base_Dia && emp.Jornada_Base_Dia !== '') ? emp.Jornada_Base_Dia : '6.5';
   document.getElementById('emp-alarma').value      = emp?.Alarma_Descanso   || '25';
   document.getElementById('emp-horas-previas').value = emp?.Horas_Previas    || '';
+  document.getElementById('emp-bolsa-anual').value   = emp?.Bolsa_Anual      || '';
   document.getElementById('emp-q1').value          = emp?.Q1                || '';
   document.getElementById('emp-q2').value          = emp?.Q2                || '';
   document.getElementById('emp-q3').value          = emp?.Q3                || '';
@@ -1119,6 +1121,7 @@ async function guardarEmpleadoForm() {
       nombre:           document.getElementById('emp-nombre').value,
       numero:           document.getElementById('emp-numero').value,
       email:            document.getElementById('emp-email').value,
+      email2:           document.getElementById('emp-email2').value,
       empTelegramId:    document.getElementById('emp-tgid').value,
       rol:              document.getElementById('emp-rol').value,
       notificaciones:   document.getElementById('emp-notif').value,
@@ -1128,6 +1131,7 @@ async function guardarEmpleadoForm() {
       objetivoDia:      empActual?.Objetivo_Dia || '7.5',
       alarmaDescanso:   document.getElementById('emp-alarma').value,
       horasPrevias:     document.getElementById('emp-horas-previas').value,
+      bolsaAnual:       document.getElementById('emp-bolsa-anual').value,
       confirmarFichaje: document.getElementById('emp-confirmar').value,
       Q1:               document.getElementById('emp-q1').value,
       Q2:               document.getElementById('emp-q2').value,
@@ -1303,6 +1307,7 @@ function abrirOpcionesAusencia(id, tipo, fecha, numEmp) {
 
   // Guardar datos en state para usarlos desde los botones
   state._opcionesAusencia = { fecha, nombre, numEmp };
+  state._resolviendoDesdeIncidencias = true;
 
   const html = `<div class="modal-overlay" id="modal-opciones-ausencia" style="display:flex">
     <div class="modal-card">
@@ -1433,22 +1438,19 @@ async function guardarAusenciaModal(fecha) {
       await api('resolverIncidencia', { id: state._incidenciaActiva.id }).catch(() => {});
       state._incidenciaActiva = null;
       state._opcionesAusencia = null;
-      await cargarIncidencias();
+      // Recargar incidencias para que aparezca como "Resuelta" en vez de desaparecer
+      cargarIncidencias();
     }
 
     toast('✅ Ausencia guardada', 'ok');
     document.getElementById('modal-dia')?.remove();
 
-    // Refrescar ausencias y calendario
+    // Refrescar ausencias y calendario siempre
     const numEmpRefresh = selDash?.value || numEmpTarget;
     const ausenciasNew = await api('getAusencias', numEmpRefresh ? { numEmp: numEmpRefresh } : {}).catch(() => []);
     state._ausencias = ausenciasNew;
-    const mesInput = document.getElementById('dash-mes');
-    if (mesInput && window._lastResumenDias) {
-      renderCalendario(window._lastResumenDias, mesInput.value, ausenciasNew);
-    } else {
-      cargarDashboard();
-    }
+    // Recargar dashboard para refrescar calendario
+    cargarDashboard();
   } catch(err) { toast('❌ ' + err.message, 'error'); }
 }
 
