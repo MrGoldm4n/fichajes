@@ -1067,7 +1067,10 @@ async function toggleActivoEmpleado(id, estaActivo) {
     });
     toast((nuevoEstado ? '✅ Empleado activado' : '⏸ Empleado desactivado'), 'ok');
     await cargarEmpleados();
-  } catch(err) { toast('❌ ' + err.message, 'error'); }
+  } catch(err) {
+    toast('❌ ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar ausencia'; }
+  }
 }
 
 function verFichajesEmpleado(id, nombre) {
@@ -1421,6 +1424,10 @@ function abrirFichajeManualDia(fecha) {
 }
 
 async function guardarAusenciaModal(fecha) {
+  // Evitar doble envío
+  const btn = document.querySelector('#modal-dia .btn-primary');
+  if (btn?.disabled) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
   const comentario = document.getElementById('dia-comentario')?.value?.trim() || '';
   // Comentario vacío = borrar la ausencia
   try {
